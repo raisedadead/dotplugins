@@ -1,0 +1,18 @@
+# Research DB (runtime output, root level only)
+/research/
+*.db
+*.db-wal
+*.db-shm
+
+# Packaged artifacts
+*.skill
+*.plugin
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db

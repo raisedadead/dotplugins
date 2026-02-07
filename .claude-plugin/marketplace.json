@@ -1,0 +1,13 @@
+{
+  "name": "cc-marketplace",
+  "owner": {
+    "name": "Mrugesh"
+  },
+  "plugins": [
+    {
+      "name": "cowork",
+      "source": "./plugins/cowork",
+      "description": "Personal Cowork plugin: deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI."
+    }
+  ]
+}
