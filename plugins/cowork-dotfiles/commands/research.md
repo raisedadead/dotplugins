@@ -1,6 +1,6 @@
 ---
 description: Deep web research with fact-checking and persistent storage
-argument-hint: "<topic or question>"
+argument-hint: [topic or question]
 ---
 
 # Research
@@ -10,7 +10,7 @@ Research a topic with fact-checking, source verification, and persistent storage
 ## Usage
 
 ```
-/research <topic or question>
+/cowork-dotfiles:research [topic or question]
 ```
 
 ## Workflow

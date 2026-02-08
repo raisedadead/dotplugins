@@ -1,6 +1,6 @@
 ---
 description: CTO-mode autonomous coding via claude-code CLI
-argument-hint: "<what to build or fix>"
+argument-hint: [what to build or fix]
 ---
 
 # Code
@@ -10,7 +10,7 @@ Execute a coding task autonomously using claude-code CLI.
 ## Usage
 
 ```
-/code <what to build, fix, or refactor>
+/cowork-dotfiles:code [what to build, fix, or refactor]
 ```
 
 ## Workflow
