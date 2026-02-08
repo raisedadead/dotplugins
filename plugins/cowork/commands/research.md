@@ -10,7 +10,7 @@ Research a topic with fact-checking, source verification, and persistent storage
 ## Usage
 
 ```
-/cowork-config:research [topic or question]
+/cowork:research [topic or question]
 ```
 
 ## Workflow

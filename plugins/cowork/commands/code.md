@@ -10,7 +10,7 @@ Execute a coding task autonomously using claude-code CLI.
 ## Usage
 
 ```
-/cowork-config:code [what to build, fix, or refactor]
+/cowork:code [what to build, fix, or refactor]
 ```
 
 ## Workflow
