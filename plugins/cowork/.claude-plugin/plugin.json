@@ -1,7 +1,7 @@
 {
   "name": "cowork",
   "version": "1.0.0",
-  "description": "Personal Cowork config: deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI. Research saves to SQLite with full-text search. Coding decomposes broad tasks and delegates autonomously.",
+  "description": "Personal Cowork plugin: deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI. Research saves to SQLite with full-text search. Coding decomposes broad tasks and delegates autonomously.",
   "author": {
     "name": "Mrugesh"
   },
