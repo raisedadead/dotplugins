@@ -5,9 +5,9 @@
   },
   "plugins": [
     {
-      "name": "cowork-dotfiles",
-      "source": "./plugins/cowork-dotfiles",
-      "description": "Personal Cowork dotfiles: deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI."
+      "name": "cowork-config",
+      "source": "./plugins/cowork-config",
+      "description": "Personal Cowork config: deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI."
     }
   ]
 }
