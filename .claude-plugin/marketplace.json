@@ -7,7 +7,7 @@
     {
       "name": "cowork",
       "source": "./plugins/cowork",
-      "description": "Personal Cowork plugin: deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI."
+      "description": "Deep research with persistent queryable storage and quick idea spikes via subagent delegation. Designed for Claude Desktop Cowork."
     },
     {
       "name": "sp",

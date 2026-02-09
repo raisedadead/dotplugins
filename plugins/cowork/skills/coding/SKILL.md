@@ -1,114 +1,69 @@
 ---
 name: coding
 description: >
-  CTO-mode coding skill that uses claude-code (CLI) to execute development tasks autonomously.
-  Decomposes broad requests into actionable subtasks, delegates to claude-code, and manages
-  the full implementation lifecycle without bothering the user with technical minutiae.
-  Use when the user asks to: build a feature, fix a bug, refactor code, set up infrastructure,
-  create a project, write scripts, or any software engineering task. Triggers on: "build",
-  "implement", "code", "fix", "deploy", "refactor", "create app", "set up", "write a script".
-  User is a full-stack JS developer and lead maintainer of freeCodeCamp / lead DevOps engineer.
+  Use when the user asks to build a prototype, spike an idea, write a script, scaffold a project,
+  or implement something quickly. Triggers on: "build", "prototype", "spike", "try out", "scaffold",
+  "write a script", "implement", "create", "make".
 ---
 
-# Coding — CTO Mode
+# Coding — Quick Spikes
 
-Autonomous coding via `claude` CLI. Act as a CTO: decompose, delegate, verify, ship.
-
-## Core Principles
-
-- **Bias to action.** Don't ask the user about implementation details — make the call.
-- **Use existing patterns.** Read the codebase before writing. Match conventions.
-- **Minimal diffs.** Do what's asked, nothing more. No drive-by refactors.
-- **Always verify.** Run tests/lint/build after changes. Don't ship broken code.
+Prototype ideas quickly via subagent delegation. All output scoped to a session directory in `~/Claude-Workspaces/`.
 
 ## Workflow
 
-### 1. Understand
+1. **Understand** — Read the user's idea. If ambiguous about _what_ to build, ask ONE clarifying question. If only _how_ is unclear, decide yourself.
 
-Read the user's request. If it's ambiguous about *what* to build (not *how*), ask ONE clarifying question. If it's only ambiguous about *how*, make the call yourself.
+2. **Create session** — Run:
 
-### 2. Explore
+   ```bash
+   python3 "$SKILL_DIR/../research/scripts/research_db.py" create-session --type spike --topic "Topic Name"
+   ```
 
-Before writing code, understand the codebase:
-```bash
-claude -p "Explore the codebase structure for <area>. List relevant files, patterns, and conventions."
-```
+   Capture `session_dir` from JSON output. This creates `notes/`, `artifacts/`, and `src/` subdirectories.
 
-Or use Glob/Grep/Read directly if you already know the area.
+3. **Plan** — Decompose into subtasks:
+   - **Small** (1-2 files): Execute directly, no subagents needed
+   - **Medium+** (3+ files): Dispatch subagents in parallel
 
-### 3. Plan (medium+ tasks)
+4. **Execute via subagents** — Dispatch independent subtasks as parallel `Task` calls in ONE message:
 
-Decompose into subtasks. Use TodoWrite to track. See `references/workflow.md` for decomposition template and sizing heuristics.
+   ```
+   Task(subagent_type="general-purpose", prompt="Create <file> at <session_dir>/src/... Requirements: ... Constraint: ONLY write files under <session_dir>/")
+   Task(subagent_type="general-purpose", prompt="Create <file> at <session_dir>/src/... Requirements: ... Constraint: ONLY write files under <session_dir>/")
+   ```
 
-### 4. Execute
+   Each subagent gets:
+   - Explicit file scope within session directory
+   - Full task spec inline (subagents don't inherit conversation history)
+   - Constraint: "ONLY modify files under `<session_dir>/`"
+   - Available tools: Python 3, Node.js 22, Ruby, pandoc, ffmpeg, ImageMagick
 
-Delegate to `claude` CLI. One focused prompt per subtask:
+5. **Verify** — After subagents complete:
+   - Check files exist and aren't empty
+   - Run tests/lints if applicable
+   - Run the prototype if it's a script
 
-```bash
-# Feature work
-claude -p "<specific task description with context and constraints>"
+6. **Persist** — Save a research note documenting the spike:
 
-# With file context
-claude -p "In src/routes/api.js, add a new endpoint for <X>. Follow the pattern used by the existing /users endpoint. Add tests in src/__tests__/."
-```
+   ```bash
+   python3 "$SKILL_DIR/../research/scripts/research_db.py" add \
+     --topic "Spike: Topic" --query "What was built" --summary "Outcome" \
+     --tags "spike" --confidence high \
+     --session-dir "$SESSION_DIR" --session-type spike
+   ```
 
-**Prompt rules for claude-code:**
-- Be specific about files and locations
-- Reference existing patterns ("follow the pattern in X")
-- Include constraints ("don't modify Y", "keep backward compatible")
-- Request verification ("run tests after")
+7. **Report** — Brief summary: what was built, what works, what's next. No code dumps unless asked.
 
-### 5. Verify
+## Constraints
 
-After each subtask:
-```bash
-claude -p "Run the test suite and fix any failures introduced by the recent changes."
-```
+- No git operations (Cowork VM doesn't have your repos)
+- No package publishing or deployment
+- No modifying files outside the session directory
+- Bias to action — make implementation decisions yourself, escalate only for architectural choices
 
-### 6. Report
+## Path Resolution
 
-Give the user a brief summary: what changed, what was tested, any decisions made. No code dumps unless asked.
+This skill shares the research DB script. Path: `$SKILL_DIR/../research/scripts/research_db.py`
 
-## User Context
-
-- **Stack:** Full-stack JavaScript (Node.js, React, etc.)
-- **Role:** Lead maintainer @ freeCodeCamp, lead DevOps engineer
-- **Preferences:** Succinct communication, no fluff, no emojis
-- **Skill level:** Expert — don't explain basics, don't hedge
-
-## Decision Authority
-
-Make these calls yourself (don't ask):
-- File organization and naming
-- Implementation approach (which library, which pattern)
-- Test strategy (unit vs integration vs e2e)
-- Error handling approach
-- Git branch naming and commit messages
-
-Escalate to user:
-- Architectural changes (new service, new DB, major dependency)
-- UX-visible changes that weren't specified
-- Breaking changes to public APIs
-- Cost-impacting decisions (paid services, infrastructure sizing)
-
-## Advanced: Multi-step with Claude Code
-
-For large features, chain claude-code calls:
-
-```bash
-# Step 1: Scaffold
-claude -p "Create the file structure for <feature>: <files needed>. Stub out exports."
-
-# Step 2: Implement core logic
-claude -p "Implement <core function> in <file>. Requirements: <...>. Use <pattern> from <existing file>."
-
-# Step 3: Tests
-claude -p "Write tests for <feature> in <test file>. Cover: <cases>. Run them."
-
-# Step 4: Integration
-claude -p "Wire up <feature> in <entry point>. Update routes/config as needed. Run full test suite."
-```
-
-## Reference
-
-For detailed decomposition templates, prompt patterns, and the decision framework, see `references/workflow.md`.
+DB location: `~/Claude-Workspaces/research.db`

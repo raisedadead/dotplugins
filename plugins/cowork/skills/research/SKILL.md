@@ -1,106 +1,87 @@
 ---
 name: research
 description: >
-  Deep web research skill with fact-checking, source verification, and persistent disk-backed storage.
   Use when the user asks to research a topic, fact-check claims, gather up-to-date information,
   or when any task requires current/verified information from the web. Also triggers on: "look up",
   "find out", "what's the latest on", "investigate", "research", "fact check", "verify".
-  Saves all research to a queryable SQLite database with markdown exports for future reference.
 ---
 
 # Research
 
-Structured web research with persistent, queryable storage.
+Structured web research with persistent, queryable storage. All research persists in `~/Claude-Workspaces/`.
 
 ## Workflow
 
-1. **Scope** — Clarify what the user needs (depth, angle, deliverable).
-2. **Search** — Use `WebSearch` and `WebFetch` to gather information. Prefer multiple independent queries for breadth. Run searches in parallel when queries are independent.
-3. **Fact-check** — Cross-reference claims across 2+ sources. Flag conflicts. Assign confidence: `high` (3+ agreeing sources), `medium` (2 sources or minor conflicts), `low` (single source or significant conflicts).
-4. **Save** — Persist every research session to the database (see below).
-5. **Deliver** — Summarize findings to the user. Cite sources inline. Attach confidence levels to key claims.
+1. **Scope** — Clarify what the user needs. Classify:
+   - `quick-lookup`: Single question, 1-2 searches, inline answer
+   - `deep-research`: Multi-faceted, 2-4 parallel subagents
 
-## Database Operations
+2. **Create session** — Run:
 
-Script: `scripts/research_db.py` in this skill's directory.
+   ```bash
+   python3 "$SKILL_DIR/scripts/research_db.py" create-session --type <type> --topic "Topic Name"
+   ```
 
-**Path resolution:** Locate this SKILL.md on disk, then use its parent directory as `SKILL_DIR`. The script is at `$SKILL_DIR/scripts/research_db.py`.
+   Capture the returned `session_dir` from JSON output.
 
-The script respects these env vars for DB location (checked in order):
-1. `RESEARCH_WORKSPACE` — explicit override
-2. `COWORK_WORKSPACE` — set by Cowork runtime
-3. Falls back to `~/Claude-Workspaces`
+3. **Check existing research** — Query the DB first:
 
-### First-time setup
-```bash
-python3 "$SKILL_DIR/scripts/research_db.py" init
-```
+   ```bash
+   python3 "$SKILL_DIR/scripts/research_db.py" search "relevant term"
+   ```
 
-### Save research
-```bash
-python3 "$SKILL_DIR/scripts/research_db.py" add \
-  --topic "Topic Name" \
-  --query "The original question or search query" \
-  --summary "Concise findings with key facts" \
-  --raw-findings "Detailed notes, quotes, data points" \
-  --sources '[{"url":"https://...","title":"Source Title","accessed":"2026-02-07"}]' \
-  --tags "tag1,tag2" \
-  --confidence high
-```
+   Reuse and build on prior findings.
 
-### Query past research
-```bash
-# Full-text search
-python3 "$SKILL_DIR/scripts/research_db.py" search "search term"
+4. **Execute search:**
 
-# By topic or tag
-python3 "$SKILL_DIR/scripts/research_db.py" query --topic "topic"
-python3 "$SKILL_DIR/scripts/research_db.py" query --tag "tag"
+   **Quick lookup:** Search directly with `WebSearch`/`WebFetch`. Answer inline.
 
-# Recent notes
-python3 "$SKILL_DIR/scripts/research_db.py" list --limit 10
+   **Deep research:** Decompose into 2-4 independent facets. Dispatch ALL as subagents via `Task` tool in ONE message for true parallelism:
 
-# All topics
-python3 "$SKILL_DIR/scripts/research_db.py" topics
-```
+   ```
+   Task(subagent_type="research", prompt="Research facet: <specific angle>. Return JSON: {findings, sources: [{url, title, accessed}], confidence: high|medium|low}")
+   Task(subagent_type="research", prompt="Research facet: <another angle>. Return JSON: ...")
+   ```
 
-### Before starting new research
+   Each subagent:
+   - Gets one specific facet/angle
+   - Returns structured JSON (findings, sources, confidence)
+   - Does NOT write files — parent synthesizes
 
-ALWAYS check the database first for existing research on the topic:
-```bash
-python3 "$SKILL_DIR/scripts/research_db.py" search "relevant term"
-```
-Reuse and build on prior findings. Avoid redundant searches.
+5. **Synthesize** — Merge results. Cross-reference claims across sources. Flag conflicts. Assign confidence:
+   - `high`: 3+ agreeing sources
+   - `medium`: 2 sources or minor conflicts
+   - `low`: single source or significant conflicts
+
+6. **Persist** — Save to DB and session directory:
+
+   ```bash
+   python3 "$SKILL_DIR/scripts/research_db.py" add \
+     --topic "Topic" --query "Original question" --summary "Findings" \
+     --raw-findings "Detailed notes" \
+     --sources '[{"url":"...","title":"...","accessed":"2026-02-09"}]' \
+     --tags "tag1,tag2" --confidence high \
+     --session-dir "$SESSION_DIR" --session-type deep-research
+   ```
+
+7. **Deliver** — Concise summary with confidence markers and source links. No lengthy reports unless asked.
+
+## Path Resolution
+
+Locate this SKILL.md on disk, then use its parent directory as `SKILL_DIR`. The script is at `$SKILL_DIR/scripts/research_db.py`.
+
+DB location: `~/Claude-Workspaces/research.db` (override with `RESEARCH_WORKSPACE` env var).
+
+## Failure Handling
+
+- If `WebSearch`/`WebFetch` fails, log the failure, try alternate queries
+- Report partial results with `low` confidence rather than failing silently
+- Save research even if findings are negative ("X does not exist" is valuable)
 
 ## Research Quality Rules
 
-- Never present single-source findings as fact without flagging confidence as `low`.
-- Prefer primary sources (official docs, papers, direct announcements) over aggregator/blog posts.
-- Include access dates in source metadata — web content changes.
-- When sources conflict, present both sides with the conflict noted.
-- For technical topics (APIs, libraries, frameworks), verify against official documentation.
-- Save research even if the findings are negative ("X does not exist" is valuable).
-
-## Output Format
-
-When delivering research to the user, keep it tight:
-
-**For quick lookups:** Inline answer with source link, no file needed.
-
-**For substantial research:** Save to DB, then provide a concise summary with:
-- Key findings (with confidence markers)
-- Notable conflicts or caveats
-- Source links
-
-Do NOT generate lengthy reports unless the user explicitly asks for a document.
-
-## Storage Layout
-
-All research persists at:
-```
-WORKSPACE/research/
-├── research.db          # SQLite database (queryable)
-└── notes/               # Markdown exports (human-readable)
-    ├── 0001-topic-slug.md
-    └── ...
-```
+- Never present single-source findings as fact — flag as `low` confidence
+- Prefer primary sources over aggregator/blog posts
+- Include access dates in source metadata
+- When sources conflict, present both sides
+- For technical topics, verify against official documentation
