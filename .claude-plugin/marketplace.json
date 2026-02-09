@@ -7,7 +7,7 @@
     {
       "name": "cowork",
       "source": "./plugins/cowork",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "description": "Deep research with persistent queryable storage and quick idea spikes via subagent delegation. Designed for Claude Desktop Cowork."
     },
     {
