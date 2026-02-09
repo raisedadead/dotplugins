@@ -1,0 +1,19 @@
+{
+  "name": "sp",
+  "version": "1.0.0",
+  "description": "Lean development workflow skills: TDD, debugging, planning, code review, and CTO orchestration with Agent Teams and GitButler support.",
+  "author": {
+    "name": "Mrugesh"
+  },
+  "repository": "https://github.com/raisedadead/dotplugins",
+  "keywords": [
+    "skills",
+    "tdd",
+    "debugging",
+    "planning",
+    "code-review",
+    "cto",
+    "agent-teams",
+    "gitbutler"
+  ]
+}

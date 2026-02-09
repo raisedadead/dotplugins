@@ -1,5 +1,5 @@
 {
-  "name": "cc-marketplace",
+  "name": "dotplugins",
   "owner": {
     "name": "Mrugesh"
   },
@@ -8,6 +8,11 @@
       "name": "cowork",
       "source": "./plugins/cowork",
       "description": "Personal Cowork plugin: deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI."
+    },
+    {
+      "name": "sp",
+      "source": "./plugins/sp",
+      "description": "Lean development workflow skills: TDD, debugging, planning, code review, and CTO orchestration with Agent Teams and GitButler."
     }
   ]
 }

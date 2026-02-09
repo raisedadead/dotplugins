@@ -1,43 +1,45 @@
-# cc-marketplace
+# dotplugins
 
-Personal Claude plugin marketplace for Claude Code and Claude Cowork.
+Personal Claude Code plugin marketplace.
 
 ## Plugins
 
-### cowork
-
-Deep web research with persistent queryable storage, and CTO-mode coding via claude-code CLI.
-
-| Type | Name | Description |
-|------|------|-------------|
-| Command | `/cowork:code` | Autonomous coding via claude-code CLI |
-| Command | `/cowork:research` | Web research with fact-checking and persistent storage |
-| Skill | `coding` | CTO-mode task decomposition and delegation to claude-code |
-| Skill | `research` | Structured research with SQLite-backed persistence and full-text search |
+| Plugin     | Install                                   | Description                                                               |
+| ---------- | ----------------------------------------- | ------------------------------------------------------------------------- |
+| **cowork** | `claude plugin install cowork@dotplugins` | Deep web research with persistent storage, CTO-mode coding                |
+| **sp**     | `claude plugin install sp@dotplugins`     | TDD, debugging, planning, code review, CTO orchestration with Agent Teams |
 
 ## Install
 
 ```bash
-claude plugin marketplace add raisedadead/cc-marketplace
-claude plugin install cowork@cc-marketplace
+claude plugin marketplace add raisedadead/dotplugins
+claude plugin install sp@dotplugins
+claude plugin install cowork@dotplugins
 ```
 
 ## Structure
 
 ```
-cc-marketplace/
+dotplugins/
 ├── .claude-plugin/marketplace.json
 └── plugins/
-    └── cowork/
+    ├── cowork/
+    │   ├── .claude-plugin/plugin.json
+    │   ├── commands/{code,research}.md
+    │   └── skills/{coding,research}/SKILL.md
+    └── sp/
         ├── .claude-plugin/plugin.json
-        ├── commands/
-        │   ├── code.md
-        │   └── research.md
+        ├── agents/code-reviewer.md
         └── skills/
-            ├── coding/
-            │   ├── SKILL.md
-            │   └── references/workflow.md
-            └── research/
-                ├── SKILL.md
-                └── scripts/research_db.py
+            ├── brainstorming/
+            ├── writing-plans/
+            ├── test-driven-development/
+            ├── systematic-debugging/
+            ├── verification-before-completion/
+            ├── requesting-code-review/
+            ├── receiving-code-review/
+            ├── dispatching-parallel-agents/
+            ├── writing-skills/
+            ├── cto-but/
+            └── cto-wt/
 ```
