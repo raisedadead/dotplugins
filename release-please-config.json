@@ -4,11 +4,11 @@
   "include-v-in-tag": true,
   "tag-separator": "-",
   "separate-pull-requests": true,
+  "sequential-calls": true,
   "packages": {
     "plugins/sp": {
       "release-type": "simple",
       "package-name": "sp",
-      "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
           "type": "json",
@@ -25,7 +25,6 @@
     "plugins/cowork": {
       "release-type": "simple",
       "package-name": "cowork",
-      "changelog-path": "CHANGELOG.md",
       "extra-files": [
         {
           "type": "json",
