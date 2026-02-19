@@ -13,7 +13,7 @@
     {
       "name": "sp",
       "source": "./plugins/sp",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "description": "CTO orchestration layer for parallel development with Agent Teams and optional worktree isolation. Complementary to superpowers."
     }
   ]
