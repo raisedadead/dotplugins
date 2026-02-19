@@ -44,7 +44,7 @@ esac
 
 # Tier 3: WARN — unknown skills with orchestration-adjacent names
 case "$BARE_SKILL" in
-  *parallel*|*dispatch*|*orchestrat*|*worktree*|*agent*|*subagent*)
+  *parallel*|*dispatch*|*orchestrat*|*worktree*|*subagent*|*agent*)
     cat << WARN
 {
   "systemMessage": "WARNING: Unknown skill '${SKILL_NAME}' has an orchestration-adjacent name. If this is an orchestration skill, use /sp:cto instead. Allowing execution."

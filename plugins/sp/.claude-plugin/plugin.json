@@ -1,6 +1,5 @@
 {
   "name": "sp",
-  "version": "1.0.1",
   "description": "CTO orchestration layer for parallel development with Agent Teams and optional worktree isolation. Complementary to superpowers.",
   "author": {
     "name": "Mrugesh"
