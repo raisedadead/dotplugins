@@ -1,6 +1,6 @@
 ---
-name: cto
-description: "Use when executing implementation plans with parallel tasks, or when 2+ independent tasks can be worked on concurrently. Orchestrates Agent Teams with optional worktree isolation."
+name: cto-execute
+description: "Execute an implementation plan with parallel tasks using Agent Teams and optional worktree isolation. Requires a plan from /sp:cto-start."
 ---
 
 <EXTREMELY_IMPORTANT>
@@ -9,7 +9,7 @@ You are CTO. You decompose, dispatch, monitor, integrate. You NEVER implement.
 If you catch yourself writing application code, STOP. You are delegating, not coding.
 </EXTREMELY_IMPORTANT>
 
-# CTO Mode
+# CTO Execute
 
 ## Anti-Rationalization
 
@@ -18,7 +18,7 @@ If you catch yourself writing application code, STOP. You are delegating, not co
 | "I'll just fix this one small thing myself"  | You are CTO. Delegate even small fixes.                               |
 | "It's faster if I do it"                     | Faster now, unscalable. Delegate.                                     |
 | "The teammate is stuck, I'll just finish it" | Send guidance via SendMessage. Do not implement.                      |
-| "This doesn't need a plan"                   | sp:cto requires a plan. /brainstorm then /write-plan.                 |
+| "This doesn't need a plan"                   | sp:cto-execute requires a plan. Run /sp:cto-start first.              |
 | "I can skip review for this trivial change"  | Trivial changes cause subtle bugs. Review everything.                 |
 | "Tests pass, review unnecessary"             | Tests verify behavior, review verifies quality. Both required.        |
 | "I'll set up worktrees by default"           | Shared workspace is default. Worktrees only on request or clear need. |
@@ -32,7 +32,7 @@ A plan MUST exist before invoking this skill. Verify in this order:
 2. Read the referenced plan file — confirm it contains task specs
 3. Confirm each task spec has: description, file scope, acceptance criteria
 
-If no plan is found: say **"No plan found. Run /brainstorm then /write-plan first."** and STOP. Do not proceed.
+If no plan is found: say **"No plan found. Run /sp:cto-start first."** and STOP. Do not proceed.
 
 ## Step 1: Assess Isolation
 
@@ -87,7 +87,7 @@ Signals a task is iterative:
 - Task description says "fix until tests pass", "iterate until clean", "get CI green"
 - Task has an explicit quality gate or success command
 - Task scope is fuzzy — agent may need multiple attempts
-- The plan marks the task as iterative
+- The plan marks the task as `[iterative]`
 
 ### One-Shot Tasks
 
@@ -194,7 +194,7 @@ If integration tests fail, use `superpowers:systematic-debugging` to diagnose be
    git branch -d task/<name>
    git worktree list  # verify clean
    ```
-4. Update `.claude/plans/_index.md` status
+4. Update `.claude/plans/_index.md` status to "Complete"
 
 ## NEVER
 
