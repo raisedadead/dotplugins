@@ -7,15 +7,6 @@
     "email": "m@raisedadead.com"
   },
   "repository": "https://github.com/raisedadead/dotplugins",
-  "category": "productivity",
-  "tags": [
-    "orchestration",
-    "agent-teams",
-    "worktrees",
-    "parallel-development",
-    "ralph",
-    "iterative-loops"
-  ],
   "keywords": [
     "cto",
     "cto-start",
