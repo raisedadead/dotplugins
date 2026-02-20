@@ -6,18 +6,5 @@
     "name": "Mrugesh",
     "email": "m@raisedadead.com"
   },
-  "repository": "https://github.com/raisedadead/dotplugins",
-  "keywords": [
-    "cto",
-    "cto-start",
-    "cto-execute",
-    "orchestration",
-    "agent-teams",
-    "worktrees",
-    "parallel-development",
-    "ralph",
-    "loop",
-    "iterative",
-    "autonomous"
-  ]
+  "repository": "https://github.com/raisedadead/dotplugins"
 }
