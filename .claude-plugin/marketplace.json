@@ -14,7 +14,7 @@
     {
       "name": "sp",
       "source": "./plugins/sp",
-      "version": "0.4.0",
+      "version": "0.4.1",
       "description": "CTO orchestration layer — /sp:cto-start for brainstorming and planning, /sp:cto-execute for parallel implementation with Agent Teams. Complementary to superpowers.",
       "category": "productivity",
       "tags": [
