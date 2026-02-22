@@ -12,18 +12,31 @@
   },
   "plugins": [
     {
-      "name": "sp",
-      "source": "./plugins/sp",
-      "version": "0.4.2",
-      "description": "CTO orchestration layer — /sp:cto-start for brainstorming and planning, /sp:cto-execute for parallel implementation with Agent Teams. Complementary to superpowers.",
+      "name": "dp-cto",
+      "source": "./plugins/dp-cto",
+      "version": "1.0.1",
+      "description": "CTO orchestration layer — /dp-cto:cto-start for brainstorming and planning, /dp-cto:cto-execute for parallel implementation with Agent Teams, /dp-cto:rlp-start for iterative loops. Complementary to superpowers.",
       "category": "productivity",
       "tags": [
         "orchestration",
         "agent-teams",
         "worktrees",
         "parallel-development",
-        "ralph",
-        "iterative-loops"
+        "iterative-loops",
+        "cto"
+      ]
+    },
+    {
+      "name": "dp-sct",
+      "source": "./plugins/dp-sct",
+      "version": "1.0.1",
+      "description": "Research validation layer — PostToolUse hooks that inject verification checklists after WebSearch, WebFetch, and MCP tool calls. Includes /dp-sct:check for manual deep-validation.",
+      "category": "productivity",
+      "tags": [
+        "research",
+        "validation",
+        "fact-checking",
+        "verification"
       ]
     }
   ]

@@ -20,7 +20,7 @@ SKILL_NAME=$(echo "$INPUT" | jq -r '.tool_input.skill // empty')
 # Strip superpowers: prefix if present
 BARE_SKILL="${SKILL_NAME#superpowers:}"
 
-# Tier 1: DENY — orchestration skills replaced by sp:cto-start / sp:cto-execute
+# Tier 1: DENY — orchestration skills replaced by dp-cto:cto-start / dp-cto:cto-execute
 case "$BARE_SKILL" in
   executing-plans|dispatching-parallel-agents|subagent-driven-development|using-git-worktrees|finishing-a-development-branch|ralph-loop|brainstorming|writing-plans)
     cat << DENY
@@ -28,7 +28,7 @@ case "$BARE_SKILL" in
   "hookSpecificOutput": {
     "permissionDecision": "deny"
   },
-  "systemMessage": "The skill '${SKILL_NAME}' is intercepted by the sp plugin. Use /sp:cto-start for brainstorming and planning, or /sp:cto-execute for implementation."
+  "systemMessage": "The skill '${SKILL_NAME}' is intercepted by the dp-cto plugin. Use /dp-cto:cto-start for brainstorming and planning, or /dp-cto:cto-execute for implementation."
 }
 DENY
     exit 0
@@ -47,7 +47,7 @@ case "$BARE_SKILL" in
   *parallel*|*dispatch*|*orchestrat*|*worktree*|*subagent*|*agent*)
     cat << WARN
 {
-  "systemMessage": "WARNING: Unknown skill '${SKILL_NAME}' has an orchestration-adjacent name. If this is an orchestration skill, use /sp:cto-start or /sp:cto-execute instead. Allowing execution."
+  "systemMessage": "WARNING: Unknown skill '${SKILL_NAME}' has an orchestration-adjacent name. If this is an orchestration skill, use /dp-cto:cto-start or /dp-cto:cto-execute instead. Allowing execution."
 }
 WARN
     exit 0

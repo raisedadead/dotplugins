@@ -1,0 +1,17 @@
+{
+  "name": "dp-cto",
+  "version": "1.0.1",
+  "description": "CTO orchestration layer — /dp-cto:cto-start for brainstorming and planning, /dp-cto:cto-execute for parallel implementation with Agent Teams, /dp-cto:rlp-start for iterative loops. Complementary to superpowers.",
+  "author": {
+    "name": "Mrugesh",
+    "email": "m@raisedadead.com"
+  },
+  "repository": "https://github.com/raisedadead/dotplugins",
+  "keywords": [
+    "cto",
+    "orchestration",
+    "agent-teams",
+    "iterative-loops",
+    "planning"
+  ]
+}

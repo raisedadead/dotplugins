@@ -8,9 +8,9 @@ default:
 
 # === Info ===
 
-# Show current plugin versions (from marketplace.json)
+# Show current version (unified across all plugins)
 version:
-    @jq -r '.plugins[] | "\(.name): v\(.version)"' .claude-plugin/marketplace.json
+    @jq -r '.plugins[0].version' .claude-plugin/marketplace.json
 
 # === Validate ===
 
@@ -25,16 +25,23 @@ validate:
             echo "FAIL: invalid JSON: $f"; ERRORS=$((ERRORS + 1))
         fi
     done
-    # Ensure plugin.json versions match marketplace.json
+    # Ensure all plugin versions match (unified versioning)
+    EXPECTED=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
+    for f in .claude-plugin/marketplace.json; do
+        for v in $(jq -r '.plugins[].version' "$f"); do
+            if [ "$v" != "$EXPECTED" ]; then
+                echo "FAIL: version mismatch in marketplace.json: $v != $EXPECTED"
+                ERRORS=$((ERRORS + 1))
+            fi
+        done
+    done
     for f in plugins/*/.claude-plugin/plugin.json; do
-        name=$(jq -r '.name' "$f")
         pv=$(jq -r '.version // empty' "$f")
-        mv=$(jq -r --arg n "$name" '.plugins[] | select(.name == $n) | .version' .claude-plugin/marketplace.json)
         if [ -z "$pv" ]; then
             echo "FAIL: $f missing version field"
             ERRORS=$((ERRORS + 1))
-        elif [ "$pv" != "$mv" ]; then
-            echo "FAIL: $f version ($pv) != marketplace.json ($mv)"
+        elif [ "$pv" != "$EXPECTED" ]; then
+            echo "FAIL: $f version ($pv) != expected ($EXPECTED)"
             ERRORS=$((ERRORS + 1))
         fi
     done
@@ -52,9 +59,10 @@ validate:
             ERRORS=$((ERRORS + 1))
         fi
     done
-    # sp-specific: shellcheck hooks
+    # Shellcheck all hook scripts
     if command -v shellcheck &>/dev/null; then
-        for sh in plugins/sp/hooks/*.sh; do
+        for sh in plugins/*/hooks/*.sh; do
+            [ -f "$sh" ] || continue
             if ! shellcheck -S warning "$sh"; then
                 echo "FAIL: shellcheck: $sh"; ERRORS=$((ERRORS + 1))
             fi
@@ -62,11 +70,14 @@ validate:
     else
         echo "SKIP: shellcheck not installed"
     fi
-    # sp-specific: validate hooks.json
-    if ! jq -e '.hooks' plugins/sp/hooks/hooks.json &>/dev/null; then
-        echo "FAIL: plugins/sp/hooks/hooks.json missing .hooks key"
-        ERRORS=$((ERRORS + 1))
-    fi
+    # Validate hooks.json for plugins that have hooks
+    for hj in plugins/*/hooks/hooks.json; do
+        [ -f "$hj" ] || continue
+        if ! jq -e '.hooks' "$hj" &>/dev/null; then
+            echo "FAIL: $hj missing .hooks key"
+            ERRORS=$((ERRORS + 1))
+        fi
+    done
     if [ "$ERRORS" -eq 0 ]; then
         echo "All checks passed."
     else
@@ -75,41 +86,32 @@ validate:
 
 # === Release ===
 
-# Release a plugin: just release sp patch|minor|major|1.2.3
-release plugin bump:
+# Bump all plugins: just release patch|minor|major
+release bump:
     #!/usr/bin/env bash
     set -euo pipefail
-    PLUGIN="{{plugin}}"
-    BUMP="{{bump}}"
-    # Verify plugin exists in marketplace
-    CURRENT=$(jq -r --arg name "$PLUGIN" '.plugins[] | select(.name == $name) | .version' .claude-plugin/marketplace.json)
-    if [ -z "$CURRENT" ]; then
-        echo "Error: plugin '${PLUGIN}' not found in marketplace.json" >&2; exit 1
-    fi
-    # Compute next version
+    CURRENT=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
     IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
     case "{{bump}}" in
         patch) VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
         minor) VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
         major) VERSION="$((MAJOR + 1)).0.0" ;;
-        *) VERSION="{{bump}}" ;;
+        *) echo "Usage: just release patch|minor|major" >&2; exit 1 ;;
     esac
-    echo "${PLUGIN}: v${CURRENT} -> v${VERSION}"
+    echo "dotplugins: v${CURRENT} -> v${VERSION}"
     read -rp "Proceed? [y/N] " CONFIRM
     [[ "$CONFIRM" =~ ^[Yy]$ ]] || { echo "Aborted."; exit 1; }
-    # Bump version in marketplace.json
-    IDX=$(jq --arg name "$PLUGIN" '.plugins | to_entries[] | select(.value.name == $name) | .key' .claude-plugin/marketplace.json)
+    # Bump all versions in marketplace.json
     TMP=$(mktemp)
-    jq --arg v "$VERSION" --argjson i "$IDX" '.plugins[$i].version = $v' .claude-plugin/marketplace.json > "$TMP" \
+    jq --arg v "$VERSION" '.plugins[].version = $v' .claude-plugin/marketplace.json > "$TMP" \
         && mv "$TMP" .claude-plugin/marketplace.json
-    # Sync version to plugin.json
-    TMP=$(mktemp)
-    jq --arg v "$VERSION" '.version = $v' "plugins/${PLUGIN}/.claude-plugin/plugin.json" > "$TMP" \
-        && mv "$TMP" "plugins/${PLUGIN}/.claude-plugin/plugin.json"
-    # Validate before committing
+    # Sync to each plugin.json
+    for f in plugins/*/.claude-plugin/plugin.json; do
+        TMP=$(mktemp)
+        jq --arg v "$VERSION" '.version = $v' "$f" > "$TMP" && mv "$TMP" "$f"
+    done
     just validate
-    # Commit and push
-    git add .claude-plugin/marketplace.json "plugins/${PLUGIN}/.claude-plugin/plugin.json"
-    git commit -m "chore(${PLUGIN}): release ${VERSION}"
+    git add .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json
+    git commit -m "chore: release v${VERSION}"
     git push origin main
-    echo "Released ${PLUGIN} v${VERSION}"
+    echo "Released dotplugins v${VERSION}"

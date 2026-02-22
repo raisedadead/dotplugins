@@ -1,0 +1,16 @@
+{
+  "name": "dp-sct",
+  "version": "1.0.1",
+  "description": "Research validation layer — PostToolUse hooks that inject verification checklists after WebSearch, WebFetch, and MCP tool calls. Includes /dp-sct:check for manual deep-validation.",
+  "author": {
+    "name": "Mrugesh",
+    "email": "m@raisedadead.com"
+  },
+  "repository": "https://github.com/raisedadead/dotplugins",
+  "keywords": [
+    "research",
+    "validation",
+    "fact-checking",
+    "verification"
+  ]
+}

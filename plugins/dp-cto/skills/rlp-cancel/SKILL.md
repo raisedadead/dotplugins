@@ -1,9 +1,9 @@
 ---
-name: cancel-ralph
-description: "Cancel an active sp:ralph loop. Lists active ralph state files and lets you choose which to cancel."
+name: rlp-cancel
+description: "Cancel an active dp-cto:rlp-start loop. Lists active ralph state files and lets you choose which to cancel."
 ---
 
-# Cancel sp:ralph Loop
+# Cancel dp-cto:rlp-start Loop
 
 Follow these steps exactly:
 

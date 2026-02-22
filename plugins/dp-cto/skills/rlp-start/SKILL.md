@@ -1,5 +1,5 @@
 ---
-name: ralph
+name: rlp-start
 description: "Use to run iterative autonomous loops on well-defined tasks. Each iteration spawns a fresh agent with clean context. Args: PROMPT [--max-iterations N] [--completion-promise TEXT] [--quality-gate CMD]"
 ---
 
@@ -10,7 +10,7 @@ You NEVER implement the task yourself. You read progress, spawn agents, check ga
 If you catch yourself writing application code, STOP. Spawn an agent for that.
 </EXTREMELY_IMPORTANT>
 
-# sp:ralph — Teammate Loop Coordinator
+# dp-cto:rlp-start — Teammate Loop Coordinator
 
 ## Anti-Rationalization
 
@@ -28,9 +28,9 @@ If you catch yourself writing application code, STOP. Spawn an agent for that.
 
 This skill can be invoked three ways:
 
-1. **Full explicit args**: `/sp:ralph "Fix the auth bug" --max-iterations 15 --quality-gate "npm test"`
-2. **Partial args**: `/sp:ralph "Fix the auth bug"` (other options inferred)
-3. **No args**: `/sp:ralph` (everything inferred from session context)
+1. **Full explicit args**: `/dp-cto:rlp-start "Fix the auth bug" --max-iterations 15 --quality-gate "npm test"`
+2. **Partial args**: `/dp-cto:rlp-start "Fix the auth bug"` (other options inferred)
+3. **No args**: `/dp-cto:rlp-start` (everything inferred from session context)
 
 ### 0a: Parse Any Explicit Arguments
 
@@ -151,7 +151,7 @@ Repeat the following until a stop condition is met.
 
 Read the state file. Check:
 
-- If `status` is `cancelled` — STOP immediately (someone ran `/sp:cancel-ralph`). Jump to Step 3 with reason "cancelled".
+- If `status` is `cancelled` — STOP immediately (someone ran `/dp-cto:rlp-cancel`). Jump to Step 3 with reason "cancelled".
 - Increment `current_iteration` by 1. Update the state file frontmatter with the new count.
 
 ### 2b: Spawn Iteration Agent

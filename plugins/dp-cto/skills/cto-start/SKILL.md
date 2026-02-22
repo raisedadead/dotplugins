@@ -1,6 +1,6 @@
 ---
 name: cto-start
-description: "Entry point for CTO orchestration. Gathers context, brainstorms approaches, writes implementation plan to .claude/plans/. Run this before /sp:cto-execute."
+description: "Entry point for CTO orchestration. Gathers context, brainstorms approaches, writes implementation plan to .claude/plans/. Run this before /dp-cto:cto-execute."
 ---
 
 <EXTREMELY_IMPORTANT>
@@ -130,7 +130,7 @@ Write `.claude/plans/<domain>/02-implementation.md`:
 ```markdown
 # [Feature Name] — Implementation Plan
 
-> **For Claude:** Use /sp:cto-execute to implement this plan.
+> **For Claude:** Use /dp-cto:cto-execute to implement this plan.
 
 **Goal:** [One sentence]
 **Architecture:** [2-3 sentences]
@@ -198,7 +198,7 @@ Add the new plan entry:
 
 Print exactly:
 
-**"Plan ready at `.claude/plans/<domain>/02-implementation.md`. Run `/sp:cto-execute` to begin."**
+**"Plan ready at `.claude/plans/<domain>/02-implementation.md`. Run `/dp-cto:cto-execute` to begin."**
 
 Do NOT invoke cto-execute. Do NOT offer to start execution. The user decides when.
 
