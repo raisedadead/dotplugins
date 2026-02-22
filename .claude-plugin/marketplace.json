@@ -14,7 +14,7 @@
     {
       "name": "dp-cto",
       "source": "./plugins/dp-cto",
-      "version": "1.0.1",
+      "version": "1.0.0",
       "description": "CTO orchestration layer — /dp-cto:cto-start for brainstorming and planning, /dp-cto:cto-execute for parallel implementation with Agent Teams, /dp-cto:rlp-start for iterative loops. Complementary to superpowers.",
       "category": "productivity",
       "tags": [
@@ -29,7 +29,7 @@
     {
       "name": "dp-sct",
       "source": "./plugins/dp-sct",
-      "version": "1.0.1",
+      "version": "1.0.0",
       "description": "Research validation layer — PostToolUse hooks that inject verification checklists after WebSearch, WebFetch, and MCP tool calls. Includes /dp-sct:check for manual deep-validation.",
       "category": "productivity",
       "tags": [
