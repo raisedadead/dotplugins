@@ -96,7 +96,11 @@ release bump:
         patch) VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
         minor) VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
         major) VERSION="$((MAJOR + 1)).0.0" ;;
-        *) echo "Usage: just release patch|minor|major" >&2; exit 1 ;;
+        *) VERSION="{{bump}}"
+           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+               echo "Usage: just release patch|minor|major|x.y.z" >&2; exit 1
+           fi ;;
+
     esac
     echo "dotplugins: v${CURRENT} -> v${VERSION}"
     read -rp "Proceed? [y/N] " CONFIRM
