@@ -176,7 +176,7 @@ Independent tasks: any merge order. Blocked tasks: merge after dependencies.
 
 If integration tests fail, use `superpowers:systematic-debugging` to diagnose before directing fixes.
 
-## Step 8: Cleanup
+## Step 8: Cleanup and Polish Handoff
 
 1. Shut down teammates: `SendMessage({ type: "shutdown_request" })` to each
 2. `TeamDelete()`
@@ -186,12 +186,12 @@ If integration tests fail, use `superpowers:systematic-debugging` to diagnose be
    git branch -d task/<name>
    git worktree list  # verify clean
    ```
-4. Update `.claude/plans/_index.md` status to "Complete"
+4. Say **"Implementation complete. Starting polish phase."**
+5. Invoke `/dp-cto:polish` to run multi-perspective review and polishing.
 
 <CHAIN>
-Execution complete. The workflow cycle is done.
-To start a new feature, the user should invoke /dp-cto:start.
-Do NOT auto-invoke /dp-cto:start. Wait for the user to initiate the next cycle.
+Implementation tasks are done. Now invoke /dp-cto:polish to run multi-perspective review.
+Do NOT skip the polish phase. Do NOT mark the cycle as complete until polish finishes.
 </CHAIN>
 
 ## NEVER

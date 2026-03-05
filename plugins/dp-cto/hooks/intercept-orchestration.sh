@@ -64,14 +64,20 @@ case "$SKILL_NAME" in
         ;;
       executing)
         case "$SKILL" in
-          ralph|verify) ALLOWED=true ;;
+          ralph|verify|polish) ALLOWED=true ;;
           start|execute) REASON="Implementation in progress. Complete execution first, or use /dp-cto:ralph-cancel to abort." ;;
           *) REASON="Implementation in progress. Complete execution first, or use /dp-cto:ralph-cancel to abort." ;;
         esac
         ;;
+      polishing)
+        case "$SKILL" in
+          verify) ALLOWED=true ;;
+          *) REASON="Polish in progress. Wait for /dp-cto:polish to complete." ;;
+        esac
+        ;;
       complete)
         case "$SKILL" in
-          start) ALLOWED=true ;;
+          start|polish) ALLOWED=true ;;
           execute|ralph|verify) REASON="Cycle is complete. Run /dp-cto:start to begin a new feature." ;;
           *) REASON="Cycle is complete. Run /dp-cto:start to begin a new feature." ;;
         esac
@@ -91,6 +97,7 @@ case "$SKILL_NAME" in
       case "$SKILL" in
         start) write_stage "$SESSION_ID" "planning" "" ;;
         execute) write_stage "$SESSION_ID" "executing" "" ;;
+        polish) write_stage "$SESSION_ID" "polishing" "" ;;
       esac
       exit 0
     fi

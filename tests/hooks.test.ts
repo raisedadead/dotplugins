@@ -116,12 +116,40 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:verify")));
     });
 
+    test("polish is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+    });
+
     test("start is denied", async () => {
       expectDenied(await runHook(HOOK, skillInput("dp-cto:start")), /progress/i);
     });
 
     test("execute is denied", async () => {
       expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /progress/i);
+    });
+  });
+
+  describe("polishing stage", () => {
+    beforeEach(() => seedStage(tmpDir, "test-session", "polishing"));
+
+    test("verify is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:verify")));
+    });
+
+    test("start is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:start")), /polish/i);
+    });
+
+    test("execute is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /polish/i);
+    });
+
+    test("ralph is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /polish/i);
+    });
+
+    test("ralph-cancel is allowed (safety valve)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
     });
   });
 
@@ -132,16 +160,23 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
     });
 
+    test("polish is allowed (standalone re-polish)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+    });
+
     test("execute is denied", async () => {
       expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /start/i);
     });
   });
 
   describe("ralph-cancel safety valve", () => {
-    test.each(["idle", "planning", "executing", "complete"])("allowed from %s", async (stage) => {
-      await seedStage(tmpDir, "test-session", stage);
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
-    });
+    test.each(["idle", "planning", "executing", "polishing", "complete"])(
+      "allowed from %s",
+      async (stage) => {
+        await seedStage(tmpDir, "test-session", stage);
+        expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
+      },
+    );
   });
 
   describe("pre-execution stage writes", () => {
@@ -155,6 +190,12 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       await seedStage(tmpDir, "test-session", "planned");
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:execute")));
       expect(await getStage(tmpDir, "test-session")).toBe("executing");
+    });
+
+    test("polish writes polishing stage", async () => {
+      await seedStage(tmpDir, "test-session", "executing");
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+      expect(await getStage(tmpDir, "test-session")).toBe("polishing");
     });
 
     test("execute preserves existing plan_path", async () => {
@@ -227,9 +268,15 @@ describe("Stage Transitions (stage-transition.sh)", () => {
     expect(await getStage(tmpDir, "test-session")).toBe("planned");
   });
 
-  test("execute transitions executing -> complete", async () => {
+  test("execute transitions executing -> polishing", async () => {
     await seedStage(tmpDir, "test-session", "executing");
     await runHook(hook, skillInput("dp-cto:execute"));
+    expect(await getStage(tmpDir, "test-session")).toBe("polishing");
+  });
+
+  test("polish transitions polishing -> complete", async () => {
+    await seedStage(tmpDir, "test-session", "polishing");
+    await runHook(hook, skillInput("dp-cto:polish"));
     expect(await getStage(tmpDir, "test-session")).toBe("complete");
   });
 
