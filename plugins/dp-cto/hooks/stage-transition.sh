@@ -48,6 +48,9 @@ case "$SKILL" in
     write_stage "$SESSION_ID" "planned" "$PLAN_PATH"
     ;;
   execute)
+    write_stage "$SESSION_ID" "polishing" ""
+    ;;
+  polish)
     write_stage "$SESSION_ID" "complete" ""
     ;;
   *)

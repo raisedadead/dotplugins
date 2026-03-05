@@ -44,6 +44,7 @@ plugins/
     skills/execute/SKILL.md        <- /dp-cto:execute parallel implementation with Agent Teams
     skills/ralph/SKILL.md          <- /dp-cto:ralph teammate-based iterative loop coordinator
     skills/ralph-cancel/SKILL.md   <- /dp-cto:ralph-cancel graceful loop cancellation
+    skills/polish/SKILL.md         <- /dp-cto:polish multi-perspective review and polishing
     skills/verify/SKILL.md         <- /dp-cto:verify manual deep-validation of research
 ```
 
@@ -73,6 +74,24 @@ The SessionStart hook (`session-start.sh`) injects context about this enforcemen
 - CTO classifies plan tasks as one-shot vs iterative; iterative tasks dispatch via `/dp-cto:ralph`
 - CTO's review fix loop escalates to ralph after 2 failed SendMessage attempts
 - ralph reads from active CTO plan when invoked without args
+
+### Key design: dp-cto:polish multi-perspective review
+
+`/dp-cto:polish` adds a post-implementation polishing phase that spawns parallel review agents with configurable lenses:
+
+- **Core lenses** (default): Security, Simplification/Dead Code, Test Coverage Gaps, Linting/Formatting
+- **Extended lenses** (opt-in): Performance, Documentation/Comments
+- User selects which lenses to run via `AskUserQuestion` (multiSelect)
+- Each lens spawns a `general-purpose` agent that reviews only changed files through its specific focus
+- Findings are severity-graded: `[CRITICAL]`, `[WARNING]`, `[SUGGESTION]`
+- CRITICAL and WARNING findings are auto-fixed by delegated agents; suggestions are user's choice
+- Quality gate runs after fixes to verify no regressions
+
+**Workflow integration**:
+
+- Auto-chained after `/dp-cto:execute` completes (execute → polishing → complete)
+- Also available standalone from `complete` stage for re-polishing
+- State machine stage: `polishing` (between `executing` and `complete`)
 
 ### Key design: dp-cto research validation
 
