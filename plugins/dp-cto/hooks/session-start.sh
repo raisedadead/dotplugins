@@ -25,11 +25,138 @@ if [ -n "$SESSION_ID" ]; then
   write_stage "$SESSION_ID" "idle" ""
 fi
 
-cat << 'EOF'
-{
-  "hookSpecificOutput": {
-    "hookEventName": "SessionStart",
-    "additionalContext": "<EXTREMELY_IMPORTANT>\nDP-CTO PLUGIN ENFORCEMENT\n\nThe following orchestration skills are DENIED by the dp-cto plugin hook and will be blocked:\n- executing-plans\n- dispatching-parallel-agents\n- subagent-driven-development\n- using-git-worktrees\n- finishing-a-development-branch\n- brainstorming\n- writing-plans\n- ralph-loop (replaced by /dp-cto:ralph)\n\ndp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requested:\n- /dp-cto:start — brainstorm approaches, write implementation plan to .claude/plans/. Handles the full brainstorming and plan writing lifecycle.\n- /dp-cto:execute — execute a plan using adaptive dispatch (subagents, iterative loops, or collaborative teams based on plan classification). Requires a plan from /dp-cto:start. Auto-chains into /dp-cto:polish on completion.\n- /dp-cto:polish — multi-perspective code review and post-implementation polishing. Spawns parallel review agents with configurable lenses (security, simplification, test gaps, linting, performance, docs). Auto-chained after execute or invokable standalone from complete stage.\n- /dp-cto:ralph — subagent-based autonomous iterative loop with fresh context per iteration. Args: PROMPT [--max-iterations N] [--completion-promise TEXT] [--quality-gate CMD].\n- /dp-cto:ralph-cancel — cancel an active ralph loop.\n- /dp-cto:verify — manual deep-validation of research findings.\n\nThese are DISTINCT skills. /dp-cto:execute is NOT the same as executing-plans. Never substitute one dp-cto skill for another.\n\nWorkflow: /dp-cto:start → /dp-cto:execute → /dp-cto:polish.\n\nQuality skills from superpowers remain available and are invoked automatically by execute: test-driven-development, requesting-code-review, receiving-code-review, systematic-debugging, verification-before-completion, writing-skills, using-superpowers.\n\nStage enforcement is active. The hook tracks your workflow stage and only allows valid transitions:\nidle → start → planned → execute → executing → polish → polishing → complete → start (new cycle)\nralph, verify, and polish are allowed during executing. verify is allowed during polishing. polish is allowed from complete (standalone re-polish). ralph-cancel is always allowed.\nOut-of-order skill invocations will be denied by the hook.\n\nEnforcement: Attempts to use intercepted skills will be denied by the PreToolUse hook.\n</EXTREMELY_IMPORTANT>"
-  }
+# ─── Session Recovery Detection ──────────────────────────────────────────────
+RECOVERY_CONTEXT=""
+
+is_non_terminal() {
+  case "$1" in
+    planned|executing|polishing) return 0 ;;
+    *) return 1 ;;
+  esac
 }
-EOF
+
+recover_from_breadcrumb() {
+  local bc
+  bc=$(read_breadcrumb)
+  if [ -z "$bc" ]; then
+    return 1
+  fi
+
+  local bc_stage bc_plan_path bc_session_id
+  bc_stage=$(echo "$bc" | jq -r '.stage // empty') || return 1
+  bc_plan_path=$(echo "$bc" | jq -r '.plan_path // empty') || return 1
+  bc_session_id=$(echo "$bc" | jq -r '.session_id // empty') || return 1
+
+  if ! is_non_terminal "$bc_stage"; then
+    return 1
+  fi
+
+  local sf
+  sf=$(stage_file "$bc_session_id")
+  if [ ! -f "$sf" ]; then
+    return 1
+  fi
+
+  RECOVERY_CONTEXT="RECOVERY: Prior session (${bc_session_id}) was at stage '${bc_stage}' with plan '${bc_plan_path}'. Resume with /dp-cto:execute or /dp-cto:polish as appropriate."
+  return 0
+}
+
+recover_from_scan() {
+  local dir
+  dir=$(stage_dir)
+  if [ ! -d "$dir" ]; then
+    return 1
+  fi
+
+  local latest_file="" latest_ts="" latest_stage="" latest_plan="" latest_sid=""
+
+  for f in "$dir"/*.stage.json; do
+    [ -f "$f" ] || continue
+
+    local fname
+    fname=$(basename "$f" .stage.json)
+
+    if [ "$fname" = "$SESSION_ID" ]; then
+      continue
+    fi
+
+    local s ts pp
+    s=$(jq -r '.stage // empty' "$f" 2>/dev/null) || continue
+
+    case "$s" in
+      idle|ended|complete) continue ;;
+    esac
+
+    if ! is_non_terminal "$s"; then
+      continue
+    fi
+
+    ts=$(jq -r '.started_at // empty' "$f" 2>/dev/null) || continue
+    pp=$(jq -r '.plan_path // empty' "$f" 2>/dev/null) || true
+
+    if [ -z "$latest_ts" ] || [[ "$ts" > "$latest_ts" ]]; then
+      latest_file="$f"
+      latest_ts="$ts"
+      latest_stage="$s"
+      latest_plan="$pp"
+      latest_sid="$fname"
+    fi
+  done
+
+  if [ -z "$latest_file" ]; then
+    return 1
+  fi
+
+  RECOVERY_CONTEXT="RECOVERY: Prior session (${latest_sid}) was at stage '${latest_stage}' with plan '${latest_plan}'. Resume with /dp-cto:execute or /dp-cto:polish as appropriate."
+  return 0
+}
+
+if [ -n "$SESSION_ID" ]; then
+  recover_from_breadcrumb || recover_from_scan || true
+fi
+
+# ─── Build output ────────────────────────────────────────────────────────────
+ENFORCEMENT_TEXT="<EXTREMELY_IMPORTANT>
+DP-CTO PLUGIN ENFORCEMENT
+
+The following orchestration skills are DENIED by the dp-cto plugin hook and will be blocked:
+- executing-plans
+- dispatching-parallel-agents
+- subagent-driven-development
+- using-git-worktrees
+- finishing-a-development-branch
+- brainstorming
+- writing-plans
+- ralph-loop (replaced by /dp-cto:ralph)
+
+dp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requested:
+- /dp-cto:start — brainstorm approaches, write implementation plan to .claude/plans/. Handles the full brainstorming and plan writing lifecycle.
+- /dp-cto:execute — execute a plan using adaptive dispatch (subagents, iterative loops, or collaborative teams based on plan classification). Requires a plan from /dp-cto:start. Auto-chains into /dp-cto:polish on completion.
+- /dp-cto:polish — multi-perspective code review and post-implementation polishing. Spawns parallel review agents with configurable lenses (security, simplification, test gaps, linting, performance, docs). Auto-chained after execute or invokable standalone from complete stage.
+- /dp-cto:ralph — subagent-based autonomous iterative loop with fresh context per iteration. Args: PROMPT [--max-iterations N] [--completion-promise TEXT] [--quality-gate CMD].
+- /dp-cto:ralph-cancel — cancel an active ralph loop.
+- /dp-cto:verify — manual deep-validation of research findings.
+
+These are DISTINCT skills. /dp-cto:execute is NOT the same as executing-plans. Never substitute one dp-cto skill for another.
+
+Workflow: /dp-cto:start → /dp-cto:execute → /dp-cto:polish.
+
+Quality skills from superpowers remain available and are invoked automatically by execute: test-driven-development, requesting-code-review, receiving-code-review, systematic-debugging, verification-before-completion, writing-skills, using-superpowers.
+
+Stage enforcement is active. The hook tracks your workflow stage and only allows valid transitions:
+idle → start → planned → execute → executing → polish → polishing → complete → start (new cycle)
+ralph, verify, and polish are allowed during executing. verify is allowed during polishing. polish is allowed from complete (standalone re-polish). ralph-cancel is always allowed.
+Out-of-order skill invocations will be denied by the hook.
+
+Enforcement: Attempts to use intercepted skills will be denied by the PreToolUse hook.
+</EXTREMELY_IMPORTANT>"
+
+if [ -n "$RECOVERY_CONTEXT" ]; then
+  ADDITIONAL_CONTEXT="${RECOVERY_CONTEXT}
+${ENFORCEMENT_TEXT}"
+else
+  ADDITIONAL_CONTEXT="$ENFORCEMENT_TEXT"
+fi
+
+jq -n --arg ctx "$ADDITIONAL_CONTEXT" \
+  '{hookSpecificOutput: {hookEventName: "SessionStart", additionalContext: $ctx}}'

@@ -109,6 +109,33 @@ export async function getPlanPath(tmpDir: string, sessionId: string): Promise<st
   }
 }
 
+export async function getBreadcrumb(tmpDir: string): Promise<string> {
+  try {
+    const raw = await readFile(join(tmpDir, ".claude", "dp-cto", "active.json"), "utf-8");
+    JSON.parse(raw);
+    return raw;
+  } catch {
+    return "";
+  }
+}
+
+export async function breadcrumbExists(tmpDir: string): Promise<boolean> {
+  const { existsSync } = await import("node:fs");
+  return existsSync(join(tmpDir, ".claude", "dp-cto", "active.json"));
+}
+
+export async function seedBreadcrumb(
+  tmpDir: string,
+  sessionId: string,
+  stage: string,
+  planPath = "",
+): Promise<void> {
+  const dir = join(tmpDir, ".claude", "dp-cto");
+  await mkdir(dir, { recursive: true });
+  const data = { session_id: sessionId, stage, plan_path: planPath, cwd: tmpDir };
+  await writeFile(join(dir, "active.json"), JSON.stringify(data));
+}
+
 export async function seedIndex(tmpDir: string, planPath: string): Promise<void> {
   const dir = join(tmpDir, ".claude", "plans");
   await mkdir(dir, { recursive: true });

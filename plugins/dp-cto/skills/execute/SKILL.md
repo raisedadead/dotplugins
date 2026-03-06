@@ -39,28 +39,15 @@ The stage machine hook enforces that the planning stage has been completed befor
 
 ## Step 2: Subagent Dispatch (parallel)
 
-For each `[subagent]` task with no unresolved dependencies, spawn via `Agent` tool with `run_in_background: true`.
+For each `[subagent]` task with no unresolved dependencies:
 
-For `[subagent:isolated]` tasks, add `isolation: "worktree"` to the Agent call.
+1. Extract the ` ```agent-prompt ` block from the plan for that task
+2. Pass the extracted prompt verbatim to the `Agent` tool with `run_in_background: true`
+3. For `[subagent:isolated]` tasks, add `isolation: "worktree"` to the Agent call
 
 Batch in rounds of 3-4 (preserve anti-pattern rule).
 
-Each agent prompt MUST include:
-
-1. **Full task spec** pasted inline (agents do not inherit conversation history)
-2. **Explicit file scope** — resolve actual file paths from the plan
-3. **Constraints block** (paste literally, with actual file paths filled in):
-
-```text
-CONSTRAINTS:
-- REQUIRED SUB-SKILL: superpowers:test-driven-development — write a failing test first, verify it fails, implement, verify it passes
-- REQUIRED SUB-SKILL: superpowers:verification-before-completion — run verification commands and confirm output before claiming done
-- If you encounter a bug during implementation, use superpowers:systematic-debugging to diagnose before fixing
-- If you receive review feedback, use superpowers:receiving-code-review to process it with technical rigor
-- Verify before claiming done: run the test command, read the full output, show evidence
-- Do NOT modify files outside your scope: <actual file paths from task spec>
-- Do NOT run git write commands (commit, push, checkout, branch)
-```
+The agent prompt is pre-built in the plan. Do NOT modify it — pass it verbatim.
 
 CTO is auto-notified when background agents complete. Dependent subagent tasks dispatch after their dependencies complete.
 
@@ -70,7 +57,7 @@ While waiting for background agents, CTO can proceed to dispatch iterative tasks
 
 Skip this step if no `[iterative]` tasks exist. Most well-planned tasks should be `[subagent]`.
 
-For each `[iterative]` task, dispatch as a `[subagent]` task first (same as Step 2). If it fails the quality gate after 2 fix rounds in Step 5, report the failure to the user and suggest they invoke `/dp-cto:ralph` manually.
+For each `[iterative]` task, extract the ` ```agent-prompt ` block from the plan and dispatch as a `[subagent]` task first (same as Step 2 — pass the prompt verbatim). If it fails the quality gate after 2 fix rounds in Step 5, report the failure to the user and suggest they invoke `/dp-cto:ralph` manually.
 
 Ralph is an opt-in tool for tasks that genuinely need multiple iteration cycles. Do NOT auto-dispatch to ralph — let the user decide.
 
@@ -82,7 +69,7 @@ Skip this entire step if there are no `[collaborative]` tasks in the plan.
 2. For each collaborative task: `TaskCreate` with description, file scope, acceptance criteria
 3. Set `addBlockedBy` for sequential dependencies
 4. Spawn teammates via `Agent` tool with `team_name` parameter
-5. Each teammate prompt follows the same template as Step 2 (full spec + constraints)
+5. Extract the ` ```agent-prompt ` block from the plan for each teammate — pass it verbatim
 6. Monitor via `TaskList`, steer via `SendMessage`
 7. Ask teammates to cross-review each other's work
 8. When all collaborative tasks complete: shut down teammates via `SendMessage({ type: "shutdown_request" })`, then `TeamDelete()`
@@ -112,6 +99,16 @@ For each completed task (from any dispatch type), run a two-stage review:
 **Collaborative tasks**: Cross-review already happened in Step 4. CTO does a final spec-compliance check by spawning a review Agent.
 
 NEVER proceed with open review issues.
+
+## Step 5b: Commit Checkpoint
+
+After each task batch passes review, ask the user:
+
+**"Tasks [list] passed review. Want to commit this progress before continuing?"**
+
+If yes, let the user handle the commit. If no, proceed to next batch or integration.
+
+This checkpoint prevents losing reviewed work if a later task or the session itself fails.
 
 ## Step 6: Integrate
 

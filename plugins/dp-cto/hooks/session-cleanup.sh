@@ -17,4 +17,7 @@ export CWD
 
 source "$(dirname "$0")/lib-stage.sh"
 
-cleanup_stage "$SESSION_ID"
+STAGE_FILE="$(stage_file "$SESSION_ID")"
+if [ -f "$STAGE_FILE" ]; then
+  write_stage "$SESSION_ID" "ended" ""
+fi

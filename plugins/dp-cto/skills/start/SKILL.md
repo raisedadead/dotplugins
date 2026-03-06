@@ -141,7 +141,7 @@ Write `.claude/plans/<domain>/02-implementation.md`:
 
 Then write task specs. Each task follows this structure:
 
-```markdown
+````markdown
 ### Task N: [Component Name] [subagent] or [iterative] or [collaborative]
 
 **Description:** What this task accomplishes.
@@ -159,7 +159,11 @@ Then write task specs. Each task follows this structure:
 - [ ] Tests pass: `<exact test command>`
 
 **Dependencies:** Task M (if any), or "None"
+
+```agent-prompt
+[Generated in Step 5d]
 ```
+````
 
 Rules for task specs:
 
@@ -173,6 +177,55 @@ Rules for task specs:
 - Each task should be independently executable by a subagent with no conversation history.
 - Order tasks by dependency: independent tasks first, dependent tasks later.
 - Keep tasks focused: one concern per task. If a task touches more than 5 files, split it.
+
+### 5d: Generate Agent Prompts
+
+For each task in the implementation plan, append an agent prompt block immediately after the task spec, fenced with ` ```agent-prompt `.
+
+Each agent prompt follows this template:
+
+```agent-prompt
+You are implementing Task N: [Component Name].
+
+## Your Task
+
+[Full task description from the task spec]
+
+## Files
+
+[Exact file list from the task spec — Create/Modify/Test with full paths]
+
+## Acceptance Criteria
+
+[All acceptance criteria from the task spec]
+
+## Context
+
+[2-3 sentences of architectural context from the analysis — how this task fits into the whole]
+
+## Constraints
+
+CONSTRAINTS:
+- REQUIRED SUB-SKILL: superpowers:test-driven-development — write a failing test first, verify it fails, implement, verify it passes
+- REQUIRED SUB-SKILL: superpowers:verification-before-completion — run verification commands and confirm output before claiming done
+- If you encounter a bug during implementation, use superpowers:systematic-debugging to diagnose before fixing
+- If you receive review feedback, use superpowers:receiving-code-review to process it with technical rigor
+- Verify before claiming done: run the test command, read the full output, show evidence
+- Do NOT modify files outside your scope: [actual file paths from task spec]
+- Do NOT run git write commands (commit, push, checkout, branch)
+```
+
+For `[subagent:isolated]` tasks, add this additional line to the Constraints section:
+
+```
+- ONLY work in YOUR worktree. Do not touch other worktrees or the main working directory.
+```
+
+Rules for agent prompts:
+
+- Pull the architectural context from `01-analysis.md` — keep it to 2-3 sentences that explain how this task fits into the whole.
+- The file list must use the exact paths from the task spec. This becomes the agent's scope boundary.
+- The agent prompt must be self-contained: an agent with no conversation history should be able to execute from the prompt alone.
 
 ## Step 6: Update Registry
 

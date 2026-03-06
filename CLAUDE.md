@@ -63,10 +63,12 @@ The SessionStart hook (`session-start.sh`) injects context about this enforcemen
 
 `/dp-cto:execute` uses adaptive dispatch — the plan (from `/dp-cto:start`) classifies each task's dispatch strategy, and execute picks the right Claude Code primitive:
 
+- **Plan-heavy dispatch**: Start now generates complete agent prompts per task in fenced `agent-prompt` blocks. Execute extracts these prompts and passes them verbatim to Agent calls — execute is a near-mechanical dispatcher that handles dispatch mechanics but not prompt content.
 - **Phase 1 — Subagent dispatch**: `[subagent]` tasks spawn via `Agent(run_in_background=true)` for parallel execution. `[subagent:isolated]` adds `isolation: "worktree"` for filesystem isolation.
 - **Phase 2 — Iterative dispatch**: `[iterative]` tasks invoke `/dp-cto:ralph` (sequential foreground subagent loop). No team collision since ralph is subagent-based.
 - **Phase 3 — Collaborative dispatch**: `[collaborative]` tasks (rare) use `TeamCreate` + teammates + `SendMessage` for inter-agent coordination. Only phase that creates a team.
-- **Review**: Subagent results reviewed via fresh review agents. Fix loop spawns fresh fix agents. Escalation to ralph after 2 failed fix rounds.
+- **Review**: Subagent results reviewed via fresh review agents. Fix loop spawns fresh fix agents. After 2 failed fix rounds, report failure and suggest user invoke `/dp-cto:ralph` manually.
+- **Commit checkpoints**: After each task batch passes review, CTO asks user if they want to commit progress.
 - **Confirmation points**: Only "Ready to integrate" pause. No isolation question, no "ready to provision" pause.
 
 ### Key design: dp-cto:ralph iterative loops
@@ -83,7 +85,7 @@ The SessionStart hook (`session-start.sh`) injects context about this enforcemen
 **CTO integration** (three points):
 
 - CTO classifies plan tasks as `[subagent]`, `[iterative]`, or `[collaborative]`; iterative tasks dispatch via `/dp-cto:ralph`
-- CTO's review fix loop escalates to ralph after 2 failed fix agent attempts
+- CTO's review fix loop reports failure after 2 fix attempts and suggests user invoke ralph manually
 - ralph reads from active CTO plan when invoked without args
 
 ### Key design: dp-cto:polish multi-perspective review
@@ -107,6 +109,15 @@ The SessionStart hook (`session-start.sh`) injects context about this enforcemen
 ### Key design: dp-cto research validation
 
 The dp-cto plugin includes a PostToolUse hook (`research-validator.sh`) that fires after WebSearch, WebFetch, and MCP tool calls. It injects verification checklists prompting the agent to cross-check sources. The `/dp-cto:verify` skill provides manual deep-validation on demand.
+
+### Key design: session recovery
+
+Breadcrumb file at `.claude/dp-cto/active.json` tracks the active session:
+
+- Written on `planned`, updated through stage transitions, cleared on `complete`
+- SessionStart checks the breadcrumb (fast path), then scans `*.stage.json` for non-terminal states (fallback)
+- Multiple orphaned stage files resolved by latest `started_at`
+- SessionEnd preserves stage files with `ended` status instead of deleting — enables recovery detection on next session start
 
 ## Versioning and Releases
 
@@ -135,6 +146,7 @@ Follows Anthropic's official marketplace conventions:
 - Plugin skills live in `skills/<name>/SKILL.md` (not `commands/`) — must have YAML frontmatter with `---`
 - Ralph state files go in `.claude/ralph/` (not `.claude/` root) — session-scoped by timestamp
 - dp-cto PostToolUse hook fires on ALL MCP tools (`mcp__.*`) — if this causes noise, narrow the matcher
+- Stage files are preserved on SessionEnd (not deleted) — `.claude/dp-cto/active.json` is the recovery breadcrumb
 
 ## Plugin Installation
 

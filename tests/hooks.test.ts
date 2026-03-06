@@ -8,6 +8,9 @@ import {
   seedIndex,
   createTmpDir,
   removeTmpDir,
+  getBreadcrumb,
+  breadcrumbExists,
+  seedBreadcrumb,
 } from "./helpers";
 
 let tmpDir: string;
@@ -338,6 +341,48 @@ describe("Stage Transitions (stage-transition.sh)", () => {
   });
 });
 
+// ─── Breadcrumb Tracking ─────────────────────────────────────────────────────
+
+describe("Breadcrumb Tracking (stage-transition.sh)", () => {
+  const hook = "stage-transition.sh";
+
+  test("start writes active.json with planned stage and correct plan_path", async () => {
+    await seedStage(tmpDir, "test-session", "planning");
+    await seedIndex(tmpDir, "tui/02-implementation.md");
+    await runHook(hook, skillInput("dp-cto:start"));
+    expect(await breadcrumbExists(tmpDir)).toBe(true);
+    const raw = await getBreadcrumb(tmpDir);
+    const breadcrumb = JSON.parse(raw);
+    expect(breadcrumb.stage).toBe("planned");
+    expect(breadcrumb.plan_path).toBe(".claude/plans/tui/02-implementation.md");
+    expect(breadcrumb.session_id).toBe("test-session");
+    expect(breadcrumb.cwd).toBe(tmpDir);
+  });
+
+  test("execute updates active.json to executing and preserves plan_path", async () => {
+    await seedStage(tmpDir, "test-session", "executing");
+    await seedIndex(tmpDir, "tui/02-implementation.md");
+    await runHook(hook, skillInput("dp-cto:start"));
+    await seedStage(tmpDir, "test-session", "planned", ".claude/plans/tui/02-implementation.md");
+    await runHook(hook, skillInput("dp-cto:execute"));
+    expect(await breadcrumbExists(tmpDir)).toBe(true);
+    const raw = await getBreadcrumb(tmpDir);
+    const breadcrumb = JSON.parse(raw);
+    expect(breadcrumb.stage).toBe("polishing");
+    expect(breadcrumb.plan_path).toBe(".claude/plans/tui/02-implementation.md");
+  });
+
+  test("polish deletes active.json", async () => {
+    await seedStage(tmpDir, "test-session", "polishing");
+    await seedIndex(tmpDir, "tui/02-implementation.md");
+    await runHook(hook, skillInput("dp-cto:start"));
+    expect(await breadcrumbExists(tmpDir)).toBe(true);
+    await seedStage(tmpDir, "test-session", "polishing");
+    await runHook(hook, skillInput("dp-cto:polish"));
+    expect(await breadcrumbExists(tmpDir)).toBe(false);
+  });
+});
+
 // ─── Edge Cases ─────────────────────────────────────────────────────────────
 
 describe("Edge Cases", () => {
@@ -397,6 +442,103 @@ describe("SessionStart (session-start.sh)", () => {
     expect(r.exitCode).toBe(0);
     expect(await getStage(tmpDir, "test-session")).toBe("idle");
   });
+
+  describe("session recovery detection", () => {
+    test("clean start (no orphans): no recovery context", async () => {
+      const r = await runHook(SESSION_HOOK, {
+        session_id: "new-session",
+        cwd: tmpDir,
+      });
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).not.toMatch(/RECOVERY/);
+      expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+    });
+
+    test("breadcrumb with non-terminal stage: recovery context injected", async () => {
+      await seedStage(tmpDir, "old-session", "executing", ".claude/plans/feat/02-impl.md");
+      await seedBreadcrumb(tmpDir, "old-session", "executing", ".claude/plans/feat/02-impl.md");
+      const r = await runHook(SESSION_HOOK, {
+        session_id: "new-session",
+        cwd: tmpDir,
+      });
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).toMatch(/RECOVERY/);
+      expect(ctx).toMatch(/old-session/);
+      expect(ctx).toMatch(/executing/);
+      expect(ctx).toMatch(/\.claude\/plans\/feat\/02-impl\.md/);
+      expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+    });
+
+    test("stale breadcrumb (deleted stage file): falls through to scan", async () => {
+      await seedBreadcrumb(tmpDir, "gone-session", "planned", ".claude/plans/x.md");
+      await seedStage(tmpDir, "orphan-session", "executing", ".claude/plans/y.md");
+      const r = await runHook(SESSION_HOOK, {
+        session_id: "new-session",
+        cwd: tmpDir,
+      });
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).toMatch(/RECOVERY/);
+      expect(ctx).toMatch(/orphan-session/);
+      expect(ctx).toMatch(/executing/);
+    });
+
+    test("multiple orphaned stage files: picks latest by started_at", async () => {
+      await seedStage(tmpDir, "older-session", "planned", ".claude/plans/a.md");
+      await seedStage(tmpDir, "newer-session", "executing", ".claude/plans/b.md");
+      // Override started_at to control ordering
+      const { writeFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const dir = join(tmpDir, ".claude", "dp-cto");
+      await writeFile(
+        join(dir, "older-session.stage.json"),
+        JSON.stringify({
+          stage: "planned",
+          plan_path: ".claude/plans/a.md",
+          started_at: "2026-01-01T00:00:00Z",
+          history: ["planned"],
+        }),
+      );
+      await writeFile(
+        join(dir, "newer-session.stage.json"),
+        JSON.stringify({
+          stage: "executing",
+          plan_path: ".claude/plans/b.md",
+          started_at: "2026-01-02T00:00:00Z",
+          history: ["executing"],
+        }),
+      );
+      const r = await runHook(SESSION_HOOK, {
+        session_id: "new-session",
+        cwd: tmpDir,
+      });
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).toMatch(/RECOVERY/);
+      expect(ctx).toMatch(/newer-session/);
+      expect(ctx).toMatch(/executing/);
+    });
+
+    test("no-op when all stage files are terminal", async () => {
+      await seedStage(tmpDir, "done-session-1", "idle");
+      await seedStage(tmpDir, "done-session-2", "ended");
+      await seedStage(tmpDir, "done-session-3", "complete");
+      const r = await runHook(SESSION_HOOK, {
+        session_id: "new-session",
+        cwd: tmpDir,
+      });
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).not.toMatch(/RECOVERY/);
+    });
+  });
 });
 
 // ─── SessionEnd ──────────────────────────────────────────────────────────────
@@ -404,21 +546,22 @@ describe("SessionStart (session-start.sh)", () => {
 describe("SessionEnd (session-cleanup.sh)", () => {
   const CLEANUP_HOOK = "session-cleanup.sh";
 
-  test("removes stage file", async () => {
+  test("preserves stage file with ended status", async () => {
     await seedStage(tmpDir, "test-session", "executing");
     const r = await runHook(CLEANUP_HOOK, {
       session_id: "test-session",
       cwd: tmpDir,
     });
     expect(r.exitCode).toBe(0);
-    expect(await getStage(tmpDir, "test-session")).toBe("idle");
+    expect(await getStage(tmpDir, "test-session")).toBe("ended");
   });
 
-  test("no-ops when no stage file exists", async () => {
+  test("no-ops without pre-existing stage file", async () => {
     const r = await runHook(CLEANUP_HOOK, {
       session_id: "test-session",
       cwd: tmpDir,
     });
     expect(r.exitCode).toBe(0);
+    expect(await getStage(tmpDir, "test-session")).toBe("idle");
   });
 });

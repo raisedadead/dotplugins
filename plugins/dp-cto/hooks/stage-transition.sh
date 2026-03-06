@@ -46,12 +46,17 @@ case "$SKILL" in
       fi
     fi
     write_stage "$SESSION_ID" "planned" "$PLAN_PATH"
+    write_breadcrumb "$SESSION_ID" "planned" "$PLAN_PATH" "$CWD"
     ;;
   execute)
+    EXISTING=$(read_breadcrumb)
+    EXISTING_PLAN=$(echo "$EXISTING" | jq -r '.plan_path // empty' 2>/dev/null || true)
     write_stage "$SESSION_ID" "polishing" ""
+    write_breadcrumb "$SESSION_ID" "polishing" "${EXISTING_PLAN}" "$CWD"
     ;;
   polish)
     write_stage "$SESSION_ID" "complete" ""
+    clear_breadcrumb
     ;;
   *)
     exit 0
