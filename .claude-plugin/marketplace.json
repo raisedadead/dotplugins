@@ -7,7 +7,7 @@
     "email": "m@raisedadead.com"
   },
   "metadata": {
-    "version": "2.3.0",
+    "version": "2.3.1",
     "description": "Personal Claude Code plugin marketplace by Mrugesh — orchestration, iterative loops, and development workflow tools.",
     "pluginRoot": "./plugins"
   },
@@ -15,7 +15,7 @@
     {
       "name": "dp-cto",
       "source": "./plugins/dp-cto",
-      "version": "2.3.0",
+      "version": "2.3.1",
       "description": "CTO orchestration layer — /dp-cto:start for brainstorming and planning, /dp-cto:execute for parallel implementation with Agent Teams, /dp-cto:ralph for iterative loops, /dp-cto:verify for research validation. Complementary to superpowers.",
       "category": "productivity",
       "tags": [
