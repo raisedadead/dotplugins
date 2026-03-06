@@ -17,6 +17,9 @@ INPUT=$(cat)
 
 SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
+  exit 0
+fi
 export CWD
 
 source "$(dirname "$0")/lib-stage.sh"
@@ -82,10 +85,6 @@ recover_from_scan() {
 
     local s ts pp
     s=$(jq -r '.stage // empty' "$f" 2>/dev/null) || continue
-
-    case "$s" in
-      idle|ended|complete) continue ;;
-    esac
 
     if ! is_non_terminal "$s"; then
       continue

@@ -1,6 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, writeFile, readFile, rm } from "node:fs/promises";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm, mkdtemp } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";

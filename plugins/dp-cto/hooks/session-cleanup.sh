@@ -13,6 +13,9 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
+  exit 0
+fi
 export CWD
 
 source "$(dirname "$0")/lib-stage.sh"

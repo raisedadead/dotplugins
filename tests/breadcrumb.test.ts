@@ -64,9 +64,6 @@ describe("write_breadcrumb", () => {
   });
 
   test("produces valid JSON via jq", async () => {
-    const r = await runShell(
-      `source "${LIB_STAGE}" && write_breadcrumb "s" "idle" "" "" && jq . "$(stage_dir)/active.json"`,
-    );
     const r2 = await runShell(
       `source "${LIB_STAGE}" && write_breadcrumb "s" "idle" "" "" && cat "$(CWD="${tmpDir}" bash -c 'source "${LIB_STAGE}" && stage_dir')/active.json" | jq .`,
     );
@@ -98,6 +95,37 @@ describe("read_breadcrumb", () => {
     const r = await runShell(`source "${LIB_STAGE}" && read_breadcrumb`);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe("");
+  });
+});
+
+describe("write_stage", () => {
+  test("called twice preserves started_at and accumulates history", async () => {
+    await runShell(`source "${LIB_STAGE}" && write_stage "sess-1" "planning" "/a.md"`);
+    const { readFile } = await import("node:fs/promises");
+    const first = JSON.parse(
+      await readFile(join(tmpDir, ".claude", "dp-cto", "sess-1.stage.json"), "utf-8"),
+    );
+    expect(first.started_at).toBeTruthy();
+    expect(first.history).toEqual(["planning"]);
+
+    await runShell(`source "${LIB_STAGE}" && write_stage "sess-1" "planned" ""`);
+    const second = JSON.parse(
+      await readFile(join(tmpDir, ".claude", "dp-cto", "sess-1.stage.json"), "utf-8"),
+    );
+    expect(second.started_at).toBe(first.started_at);
+    expect(second.history).toEqual(["planning", "planned"]);
+  });
+});
+
+describe("cleanup_stage", () => {
+  test("removes stage file after write_stage", async () => {
+    await runShell(`source "${LIB_STAGE}" && write_stage "sess-1" "executing" "/p.md"`);
+    const { existsSync } = await import("node:fs");
+    const file = join(tmpDir, ".claude", "dp-cto", "sess-1.stage.json");
+    expect(existsSync(file)).toBe(true);
+
+    await runShell(`source "${LIB_STAGE}" && cleanup_stage "sess-1"`);
+    expect(existsSync(file)).toBe(false);
   });
 });
 

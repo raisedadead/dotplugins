@@ -8,8 +8,17 @@ stage_dir() {
   echo "${base}/.claude/dp-cto"
 }
 
+validate_session_id() {
+  local id="$1"
+  if [[ ! "$id" =~ ^[a-zA-Z0-9._-]+$ ]]; then
+    echo "invalid session_id" >&2
+    return 1
+  fi
+}
+
 stage_file() {
   local session_id="$1"
+  validate_session_id "$session_id" || return 1
   echo "$(stage_dir)/${session_id}.stage.json"
 }
 
@@ -42,6 +51,7 @@ write_stage() {
   dir="$(stage_dir)"
 
   mkdir -p "$dir"
+  chmod 700 "$dir"
 
   local started_at
   local history
@@ -65,7 +75,7 @@ write_stage() {
   history=$(echo "$history" | jq -c --arg s "$stage" '. + [$s]')
 
   local tmpfile
-  tmpfile="${file}.tmp.$$"
+  tmpfile=$(mktemp "${file}.tmp.XXXXXX")
 
   if ! jq -n \
     --arg stage "$stage" \
@@ -105,7 +115,7 @@ write_breadcrumb() {
   mkdir -p "$dir"
 
   local tmpfile
-  tmpfile="${file}.tmp.$$"
+  tmpfile=$(mktemp "${file}.tmp.XXXXXX")
 
   if ! jq -n \
     --arg session_id "$session_id" \

@@ -44,6 +44,10 @@ case "$SKILL" in
       if [ -n "$PLAN_PATH" ]; then
         PLAN_PATH=".claude/plans/$PLAN_PATH"
       fi
+      case "$PLAN_PATH" in
+        .claude/plans/*) ;; # OK
+        *) PLAN_PATH="" ;;  # reject unexpected paths
+      esac
     fi
     write_stage "$SESSION_ID" "planned" "$PLAN_PATH"
     write_breadcrumb "$SESSION_ID" "planned" "$PLAN_PATH" "$CWD"

@@ -25,6 +25,9 @@ case "$SKILL_NAME" in
   dp-cto:*)
     SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
     CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+    if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
+      exit 0
+    fi
     export CWD
 
     # No session ID — fail open (cannot track state)

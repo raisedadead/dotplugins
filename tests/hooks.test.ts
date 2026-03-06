@@ -255,6 +255,9 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
       "superpowers:executing-plans",
       "superpowers:brainstorming",
       "superpowers:dispatching-parallel-agents",
+      "superpowers:subagent-driven-development",
+      "superpowers:using-git-worktrees",
+      "superpowers:finishing-a-development-branch",
       "superpowers:writing-plans",
       "superpowers:ralph-loop",
     ])("%s is denied", async (skill) => {
@@ -489,12 +492,10 @@ describe("SessionStart (session-start.sh)", () => {
     });
 
     test("multiple orphaned stage files: picks latest by started_at", async () => {
-      await seedStage(tmpDir, "older-session", "planned", ".claude/plans/a.md");
-      await seedStage(tmpDir, "newer-session", "executing", ".claude/plans/b.md");
-      // Override started_at to control ordering
-      const { writeFile } = await import("node:fs/promises");
+      const { mkdir, writeFile } = await import("node:fs/promises");
       const { join } = await import("node:path");
       const dir = join(tmpDir, ".claude", "dp-cto");
+      await mkdir(dir, { recursive: true });
       await writeFile(
         join(dir, "older-session.stage.json"),
         JSON.stringify({
@@ -538,6 +539,30 @@ describe("SessionStart (session-start.sh)", () => {
         ?.additionalContext as string;
       expect(ctx).not.toMatch(/RECOVERY/);
     });
+
+    test("single orphan with ended stage: no recovery context", async () => {
+      await seedStage(tmpDir, "old-session", "ended");
+      const r = await runHook(SESSION_HOOK, {
+        session_id: "new-session",
+        cwd: tmpDir,
+      });
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).not.toMatch(/RECOVERY/);
+    });
+
+    test("scan skips stage file matching current session ID", async () => {
+      await seedStage(tmpDir, "new-session", "executing", ".claude/plans/z.md");
+      const r = await runHook(SESSION_HOOK, {
+        session_id: "new-session",
+        cwd: tmpDir,
+      });
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).not.toMatch(/RECOVERY/);
+    });
   });
 });
 
@@ -563,5 +588,36 @@ describe("SessionEnd (session-cleanup.sh)", () => {
     });
     expect(r.exitCode).toBe(0);
     expect(await getStage(tmpDir, "test-session")).toBe("idle");
+  });
+});
+
+// ─── Research Validator ──────────────────────────────────────────────────────
+
+describe("Research Validator (research-validator.sh)", () => {
+  test("exits 0 and produces valid JSON with RESEARCH VALIDATION context", async () => {
+    const r = await runHook("research-validator.sh", {
+      tool_name: "WebSearch",
+      tool_input: { query: "test" },
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.json).not.toBeNull();
+    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+      ?.additionalContext as string;
+    expect(ctx).toMatch(/RESEARCH VALIDATION/);
+  });
+});
+
+// ─── Breadcrumb Tracking: execute with missing breadcrumb ────────────────────
+
+describe("Breadcrumb Tracking: execute with missing breadcrumb", () => {
+  const hook = "stage-transition.sh";
+
+  test("execute without prior breadcrumb uses plan_path from stage file", async () => {
+    await seedStage(tmpDir, "test-session", "executing", ".claude/plans/feat/02-implementation.md");
+    await runHook(hook, skillInput("dp-cto:execute"));
+    expect(await breadcrumbExists(tmpDir)).toBe(true);
+    const raw = await getBreadcrumb(tmpDir);
+    const breadcrumb = JSON.parse(raw);
+    expect(breadcrumb.plan_path).toBe("");
   });
 });
