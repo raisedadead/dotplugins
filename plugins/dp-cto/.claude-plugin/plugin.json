@@ -1,6 +1,6 @@
 {
   "name": "dp-cto",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "CTO orchestration layer — /dp-cto:start for brainstorming and planning, /dp-cto:execute for parallel implementation with Agent Teams, /dp-cto:ralph for iterative loops, /dp-cto:verify for research validation. Complementary to superpowers.",
   "author": {
     "name": "Mrugesh",
