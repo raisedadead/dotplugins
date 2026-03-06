@@ -38,11 +38,6 @@ On confirmation:
    - Set `status: cancelled`
    - Set `completed_at:` to current ISO timestamp
 
-2. Attempt team cleanup (best-effort — the team may already be gone):
-   - Read `team_name` from the state file frontmatter
-   - Call `TeamDelete()`
-   - If TeamDelete fails, that's fine — the coordinator session may have already cleaned up
-
-3. Report: "Cancelled ralph loop {SESSION_ID} at iteration {N}. State file preserved at .claude/ralph/{SESSION_ID}.md"
+2. Report: "Cancelled ralph loop {SESSION_ID} at iteration {N}. State file preserved at .claude/ralph/{SESSION_ID}.md"
 
 Do NOT delete the state file. It is a permanent record.

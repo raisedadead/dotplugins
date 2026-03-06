@@ -41,8 +41,8 @@ plugins/
       research-validator.sh        <- PostToolUse hook: injects verification checklists
                                       after WebSearch, WebFetch, and MCP tool calls
     skills/start/SKILL.md          <- /dp-cto:start brainstorming and planning
-    skills/execute/SKILL.md        <- /dp-cto:execute parallel implementation with Agent Teams
-    skills/ralph/SKILL.md          <- /dp-cto:ralph teammate-based iterative loop coordinator
+    skills/execute/SKILL.md        <- /dp-cto:execute adaptive dispatch (subagents, iterative, collaborative)
+    skills/ralph/SKILL.md          <- /dp-cto:ralph subagent-based iterative loop coordinator
     skills/ralph-cancel/SKILL.md   <- /dp-cto:ralph-cancel graceful loop cancellation
     skills/polish/SKILL.md         <- /dp-cto:polish multi-perspective review and polishing
     skills/verify/SKILL.md         <- /dp-cto:verify manual deep-validation of research
@@ -59,20 +59,31 @@ The dp-cto plugin intercepts superpowers orchestration skills via a tiered PreTo
 
 The SessionStart hook (`session-start.sh`) injects context about this enforcement into every session.
 
-### Key design: dp-cto:ralph teammate loops
+### Key design: dp-cto:execute adaptive dispatch
 
-`/dp-cto:ralph` replaces the upstream `ralph-loop` stop-hook plugin with a Teammates-based architecture:
+`/dp-cto:execute` uses adaptive dispatch — the plan (from `/dp-cto:start`) classifies each task's dispatch strategy, and execute picks the right Claude Code primitive:
 
-- Each iteration spawns a fresh `general-purpose` agent (no context rot)
+- **Phase 1 — Subagent dispatch**: `[subagent]` tasks spawn via `Agent(run_in_background=true)` for parallel execution. `[subagent:isolated]` adds `isolation: "worktree"` for filesystem isolation.
+- **Phase 2 — Iterative dispatch**: `[iterative]` tasks invoke `/dp-cto:ralph` (sequential foreground subagent loop). No team collision since ralph is subagent-based.
+- **Phase 3 — Collaborative dispatch**: `[collaborative]` tasks (rare) use `TeamCreate` + teammates + `SendMessage` for inter-agent coordination. Only phase that creates a team.
+- **Review**: Subagent results reviewed via fresh review agents. Fix loop spawns fresh fix agents. Escalation to ralph after 2 failed fix rounds.
+- **Confirmation points**: Only "Ready to integrate" pause. No isolation question, no "ready to provision" pause.
+
+### Key design: dp-cto:ralph iterative loops
+
+`/dp-cto:ralph` replaces the upstream `ralph-loop` stop-hook plugin with a subagent-based architecture:
+
+- Each iteration spawns a fresh `general-purpose` subagent via the Agent tool (no teams, no context rot)
 - Session-scoped state files in `.claude/ralph/{SESSION_ID}.md` (no cross-terminal interference)
 - Quality gates run configurable commands between iterations
 - Progress tracking via structured iteration log in the state file
 - Smart defaults: infers prompt from session/plan context, detects project toolchain for gates
+- No confirmation pause — proceeds automatically with resolved config
 
 **CTO integration** (three points):
 
-- CTO classifies plan tasks as one-shot vs iterative; iterative tasks dispatch via `/dp-cto:ralph`
-- CTO's review fix loop escalates to ralph after 2 failed SendMessage attempts
+- CTO classifies plan tasks as `[subagent]`, `[iterative]`, or `[collaborative]`; iterative tasks dispatch via `/dp-cto:ralph`
+- CTO's review fix loop escalates to ralph after 2 failed fix agent attempts
 - ralph reads from active CTO plan when invoked without args
 
 ### Key design: dp-cto:polish multi-perspective review

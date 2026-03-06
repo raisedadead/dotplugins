@@ -71,7 +71,7 @@ case "$SKILL_NAME" in
         ;;
       polishing)
         case "$SKILL" in
-          verify) ALLOWED=true ;;
+          verify|polish) ALLOWED=true ;;
           *) REASON="Polish in progress. Wait for /dp-cto:polish to complete." ;;
         esac
         ;;

@@ -10,19 +10,19 @@ You NEVER implement the task yourself. You read progress, spawn agents, check ga
 If you catch yourself writing application code, STOP. Spawn an agent for that.
 </EXTREMELY_IMPORTANT>
 
-# dp-cto:ralph — Teammate Loop Coordinator
+# dp-cto:ralph — Subagent Loop Coordinator
 
 ## Anti-Rationalization
 
-| Thought                                      | Reality                                                             |
-| -------------------------------------------- | ------------------------------------------------------------------- |
-| "I'll just do this small piece myself"       | You are coordinator. Never implement.                               |
-| "The teammate failed, I'll fix it"           | Spawn next iteration. Track failure in progress file.               |
-| "Completion promise looks close enough"      | ONLY declare done when promise appears verbatim in teammate output. |
-| "Quality gate failed but it's minor"         | Failed gate = failed iteration. Log it, spawn again.                |
-| "I'll skip the progress file this iteration" | Progress file is the only cross-iteration memory. Always write it.  |
-| "Max iterations is just a suggestion"        | Max iterations is a hard stop. Never exceed it.                     |
-| "I'll run multiple iterations in parallel"   | This is a sequential loop. One active iteration at a time.          |
+| Thought                                      | Reality                                                            |
+| -------------------------------------------- | ------------------------------------------------------------------ |
+| "I'll just do this small piece myself"       | You are coordinator. Never implement.                              |
+| "The agent failed, I'll fix it"              | Spawn next iteration. Track failure in progress file.              |
+| "Completion promise looks close enough"      | ONLY declare done when promise appears verbatim in agent output.   |
+| "Quality gate failed but it's minor"         | Failed gate = failed iteration. Log it, spawn again.               |
+| "I'll skip the progress file this iteration" | Progress file is the only cross-iteration memory. Always write it. |
+| "Max iterations is just a suggestion"        | Max iterations is a hard stop. Never exceed it.                    |
+| "I'll run multiple iterations in parallel"   | This is a sequential loop. One active iteration at a time.         |
 
 ## Step 0: Resolve Configuration
 
@@ -38,7 +38,7 @@ If args are provided, parse them:
 
 - **PROMPT** — the task description (everything that is not a flag or flag value)
 - **--max-iterations N** — hard stop after N iterations
-- **--completion-promise TEXT** — exact phrase teammate must output to signal done
+- **--completion-promise TEXT** — exact phrase agent must output to signal done
 - **--quality-gate CMD** — bash command to run between iterations; non-zero exit = iteration failed
 
 ### 0b: Infer Missing Options from Context
@@ -82,48 +82,21 @@ For anything NOT explicitly provided, infer from the current session:
 - If a test/lint/typecheck command is found, suggest it as the quality gate
 - If no obvious command is found, leave as none
 
-### 0c: Confirm Configuration with User
+### 0c: Derive Session ID
 
-Present the resolved configuration using `AskUserQuestion` and ask for confirmation. Show what was explicit vs inferred:
-
-```
-Ralph loop configuration:
-
-Task: {PROMPT} {(inferred from session) or (explicit)}
-Max iterations: {N} {(inferred: medium-scope task) or (explicit)}
-Completion promise: {TEXT or "none"} {(inferred) or (explicit)}
-Quality gate: {CMD or "none"} {(detected from package.json) or (explicit)}
-```
-
-Ask: "Start the loop with this configuration?"
-
-Options:
-
-- **Start** — proceed with the shown config
-- **Adjust** — let me change something first
-
-If the user selects "Adjust", ask which option(s) to change and re-confirm.
-
-Do NOT proceed to Step 1 until the user confirms.
-
-### 0d: Derive Session ID
-
-After confirmation, derive a session ID: current timestamp in format `YYYYMMDD-HHMMSS`.
+Derive a session ID: current timestamp in format `YYYYMMDD-HHMMSS`.
 
 State file path: `.claude/ralph/{SESSION_ID}.md`
 
-## Step 1: Initialize Team + State
+## Step 1: Initialize State
 
-1. Call `TeamCreate({ team_name: "ralph-{SESSION_ID}" })`
+1. Create the sessions directory via Bash: `mkdir -p .claude/ralph`
 
-2. Create the sessions directory via Bash: `mkdir -p .claude/ralph`
-
-3. Write the state file `.claude/ralph/{SESSION_ID}.md` using the Write tool with this EXACT structure:
+2. Write the state file `.claude/ralph/{SESSION_ID}.md` using the Write tool with this EXACT structure:
 
 ```markdown
 ---
 session_id: {SESSION_ID}
-team_name: ralph-{SESSION_ID}
 status: running
 current_iteration: 0
 max_iterations: {N}
@@ -156,25 +129,14 @@ Read the state file. Check:
 
 ### 2b: Spawn Iteration Agent
 
-Create a task for tracking:
+Spawn an iteration agent via the Agent tool:
 
-```
-TaskCreate({
-  subject: "Ralph iteration {N}: {first 50 chars of PROMPT}",
-  description: "Iteration {N} of ralph loop {SESSION_ID}.",
-  activeForm: "Working on iteration {N}"
-})
-```
-
-Spawn a teammate via the `Task` tool:
-
-- `team_name`: `"ralph-{SESSION_ID}"`
-- `name`: `"worker-{N}"` (where N is the current iteration number)
 - `subagent_type`: `"general-purpose"`
+- `description`: `"Ralph iteration {N}"`
 
-The teammate prompt MUST be constructed EXACTLY as follows — do NOT abbreviate or omit sections:
+The agent prompt MUST be constructed EXACTLY as follows — do NOT abbreviate or omit sections:
 
-```
+```text
 You are iteration {N} of an iterative development loop.
 You have NO memory of prior iterations. Read the progress file FIRST.
 
@@ -224,19 +186,17 @@ YES or NO
 - Be thorough but focused. Do not expand scope beyond the task.
 ```
 
-### 2c: Wait for Teammate Response
+### 2c: Collect Agent Response
 
-Messages from teammates are auto-delivered. Wait for the teammate to complete and send its message. Do not poll. Do not act until the message arrives.
+The Agent tool returns the result directly when the subagent completes.
 
-When the message arrives, extract:
+Extract the completion report from the agent's returned output:
 
 - Summary of work done
 - Files modified
 - Current state
 - Completion status (YES/NO)
 - Full message text (for promise detection)
-
-Mark the tracking task as completed via `TaskUpdate`.
 
 ### 2d: Run Quality Gate (if configured)
 
@@ -254,9 +214,9 @@ Track consecutive gate failures. If gate has failed 3 consecutive iterations, wa
 
 Check stop conditions IN THIS ORDER:
 
-1. **Completion promise detected**: If `--completion-promise` is set AND the teammate's full message text contains the promise phrase verbatim — STOP. Reason: "promise detected".
+1. **Completion promise detected**: If `--completion-promise` is set AND the agent's full output text contains the promise phrase verbatim — STOP. Reason: "promise detected".
 
-2. **Agent confirmed complete + gate passed**: If teammate reported `Complete: YES` AND quality gate passed (or not configured) AND no completion promise is set — STOP. Reason: "agent confirmed completion".
+2. **Agent confirmed complete + gate passed**: If agent reported `Complete: YES` AND quality gate passed (or not configured) AND no completion promise is set — STOP. Reason: "agent confirmed completion".
 
 3. **Max iterations reached**: If `current_iteration >= max_iterations` — STOP. Reason: "max iterations exhausted".
 
@@ -294,7 +254,7 @@ Also update the frontmatter:
 
 When the loop stops, report to the user:
 
-```
+```text
 Ralph loop complete.
 
 Session: {SESSION_ID}
@@ -309,9 +269,7 @@ If stopped by exhaustion: add "Max iterations reached without confirmed completi
 
 ## Step 4: Cleanup
 
-1. Send shutdown request to ALL workers spawned during this loop (worker-1 through worker-{N}): `SendMessage({ type: "shutdown_request", recipient: "worker-{i}" })` for each. Workers from earlier iterations may already be gone — that is fine, ignore errors.
-2. Call `TeamDelete()`
-3. Leave the state file in place — it is a permanent record of the run. Do NOT delete it.
+Leave the state file in place — it is a permanent record of the run. Do NOT delete it.
 
 ## NEVER
 
@@ -319,7 +277,7 @@ If stopped by exhaustion: add "Max iterations reached without confirmed completi
 2. NEVER declare completion without the promise appearing verbatim (if a promise was set)
 3. NEVER exceed max_iterations
 4. NEVER skip writing the progress file before spawning the next iteration
-5. NEVER send incomplete prompts to teammates — use the full template from Step 2b
+5. NEVER send incomplete prompts to agents — use the full template from Step 2b
 6. NEVER delete the state file — it is the run record
 7. NEVER spawn more than one iteration agent at a time — this is a sequential loop
 8. NEVER trust "YES complete" without also passing the quality gate (if configured)
@@ -327,11 +285,11 @@ If stopped by exhaustion: add "Max iterations reached without confirmed completi
 
 ## Red Flags — STOP
 
-| Flag                                   | Action                                                      |
-| -------------------------------------- | ----------------------------------------------------------- |
-| About to write application code        | STOP. That is the teammate's job.                           |
-| Promise not in output but want to stop | Keep looping or exhaust iterations.                         |
-| Quality gate failing every iteration   | Warn user after 3 consecutive failures. Continue.           |
-| State file missing or corrupted        | STOP. Re-create from Step 1.                                |
-| Teammate never responded               | Check TaskList. If stuck, log it and spawn fresh iteration. |
-| State file shows `status: cancelled`   | STOP immediately. Jump to Step 3.                           |
+| Flag                                   | Action                                            |
+| -------------------------------------- | ------------------------------------------------- |
+| About to write application code        | STOP. That is the agent's job.                    |
+| Promise not in output but want to stop | Keep looping or exhaust iterations.               |
+| Quality gate failing every iteration   | Warn user after 3 consecutive failures. Continue. |
+| State file missing or corrupted        | STOP. Re-create from Step 1.                      |
+| Agent never responded                  | Log it and spawn a fresh iteration.               |
+| State file shows `status: cancelled`   | STOP immediately. Jump to Step 3.                 |

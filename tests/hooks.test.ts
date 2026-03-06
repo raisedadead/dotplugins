@@ -103,6 +103,14 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     test("ralph is denied", async () => {
       expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /execute/i);
     });
+
+    test("polish is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:polish")), /execute/i);
+    });
+
+    test("verify is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /execute/i);
+    });
   });
 
   describe("executing stage", () => {
@@ -167,6 +175,14 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     test("execute is denied", async () => {
       expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /start/i);
     });
+
+    test("ralph is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /start/i);
+    });
+
+    test("verify is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /start/i);
+    });
   });
 
   describe("ralph-cancel safety valve", () => {
@@ -201,6 +217,20 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     test("execute preserves existing plan_path", async () => {
       await seedStage(tmpDir, "test-session", "planned", ".claude/plans/test/02-implementation.md");
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:execute")));
+      expect(await getPlanPath(tmpDir, "test-session")).toBe(
+        ".claude/plans/test/02-implementation.md",
+      );
+    });
+
+    test("polish preserves existing plan_path", async () => {
+      await seedStage(
+        tmpDir,
+        "test-session",
+        "executing",
+        ".claude/plans/test/02-implementation.md",
+      );
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+      expect(await getStage(tmpDir, "test-session")).toBe("polishing");
       expect(await getPlanPath(tmpDir, "test-session")).toBe(
         ".claude/plans/test/02-implementation.md",
       );
@@ -328,6 +358,65 @@ describe("Edge Cases", () => {
     const r = await runHook(HOOK, {
       tool_name: "Skill",
       tool_input: { skill: "dp-cto:start" },
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+  });
+
+  test("unknown stage value treated as idle — start allowed", async () => {
+    await seedStage(tmpDir, "test-session", "bogus");
+    expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+  });
+
+  test("unknown stage value treated as idle — execute denied", async () => {
+    await seedStage(tmpDir, "test-session", "bogus");
+    expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /start/i);
+  });
+});
+
+// ─── SessionStart ────────────────────────────────────────────────────────────
+
+describe("SessionStart (session-start.sh)", () => {
+  const SESSION_HOOK = "session-start.sh";
+
+  test("initializes stage to idle", async () => {
+    const r = await runHook(SESSION_HOOK, {
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+    expect(await getStage(tmpDir, "test-session")).toBe("idle");
+  });
+
+  test("overwrites existing stage on new session", async () => {
+    await seedStage(tmpDir, "test-session", "executing");
+    const r = await runHook(SESSION_HOOK, {
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+    expect(await getStage(tmpDir, "test-session")).toBe("idle");
+  });
+});
+
+// ─── SessionEnd ──────────────────────────────────────────────────────────────
+
+describe("SessionEnd (session-cleanup.sh)", () => {
+  const CLEANUP_HOOK = "session-cleanup.sh";
+
+  test("removes stage file", async () => {
+    await seedStage(tmpDir, "test-session", "executing");
+    const r = await runHook(CLEANUP_HOOK, {
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+    expect(await getStage(tmpDir, "test-session")).toBe("idle");
+  });
+
+  test("no-ops when no stage file exists", async () => {
+    const r = await runHook(CLEANUP_HOOK, {
+      session_id: "test-session",
       cwd: tmpDir,
     });
     expect(r.exitCode).toBe(0);

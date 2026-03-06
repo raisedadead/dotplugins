@@ -142,7 +142,7 @@ Write `.claude/plans/<domain>/02-implementation.md`:
 Then write task specs. Each task follows this structure:
 
 ```markdown
-### Task N: [Component Name] [one-shot] or [iterative]
+### Task N: [Component Name] [subagent] or [iterative] or [collaborative]
 
 **Description:** What this task accomplishes.
 
@@ -164,9 +164,13 @@ Then write task specs. Each task follows this structure:
 Rules for task specs:
 
 - Use **actual file paths** discovered in Step 1. Never use placeholders.
-- Tag each task as `[one-shot]` (clear scope, single attempt) or `[iterative]` (needs quality gate, multiple attempts).
+- Tag each task with a dispatch type:
+  - `[subagent]` (default): Independent, focused, report-back-and-done. Most tasks.
+  - `[subagent:isolated]`: Like `[subagent]` but runs in a git worktree. Use for conflicting deps or parallel builds.
+  - `[iterative]`: Needs quality gate, multiple attempts. "Fix until tests pass" type work.
+  - `[collaborative]`: Needs inter-agent coordination, shared findings, cross-review. Rare — only when tasks must discuss findings with each other.
 - For `[iterative]` tasks, include the quality gate command in acceptance criteria.
-- Each task should be independently executable by a teammate with no conversation history.
+- Each task should be independently executable by a subagent with no conversation history.
 - Order tasks by dependency: independent tasks first, dependent tasks later.
 - Keep tasks focused: one concern per task. If a task touches more than 5 files, split it.
 
