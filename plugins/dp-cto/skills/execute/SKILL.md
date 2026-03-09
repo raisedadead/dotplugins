@@ -147,7 +147,7 @@ NEVER proceed with open review issues.
 ## Step 7: Cleanup and Handoff
 
 1. If Step 4 ran (collaborative tasks), verify the team was cleaned up
-2. Auto-chain into `/dp-cto:polish` for multi-perspective review. The stage machine transitions from `executing` to `polishing` automatically.
+2. The stage machine transitions to `polishing` automatically. The user invokes `/dp-cto:polish` to run multi-perspective review.
 
 ## NEVER
 

@@ -47,11 +47,11 @@ For anything NOT explicitly provided, infer from the current session:
 
 **PROMPT** (if not provided):
 
-- First, check for an active CTO plan: read `.claude/plans/_index.md`
-  - If an active plan exists, read the referenced plan file
-  - Look for tasks marked as "iterative", in-progress, or failing
-  - If a suitable task is found, use its description + acceptance criteria as the prompt
-  - Include the plan task reference (e.g., "Plan task #3 from domain/02-implementation.md")
+- First, check for active beads: run `bd list --format table`
+  - If active tasks exist, run `bd ready --json`
+  - Look for tasks tagged `[iterative]` or in-progress
+  - If a suitable task is found, extract its description via `bd show {task-id} --json`
+  - Include the beads task reference (e.g., "Beads task {task-id}")
 - If no plan or no suitable task: review the conversation history in this session
   - Identify the task the user has been working on or discussing
   - Synthesize a clear, actionable prompt from that context
@@ -176,7 +176,6 @@ When you are finished working, you MUST output a completion report with EXACTLY 
 
 ### Complete
 YES or NO
-{IF completion_promise is set: If YES, include this EXACT phrase: {COMPLETION_PROMISE}}
 
 ## Constraints
 
@@ -185,6 +184,9 @@ YES or NO
 - Work in the current directory.
 - Be thorough but focused. Do not expand scope beyond the task.
 ```
+
+**If `--completion-promise` is set**, append this line to the `### Complete` section before sending:
+`If YES, you MUST include this EXACT phrase in your output: {COMPLETION_PROMISE}`
 
 ### 2c: Collect Agent Response
 

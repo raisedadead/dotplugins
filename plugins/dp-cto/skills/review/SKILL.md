@@ -13,7 +13,7 @@ Code review is bidirectional: you dispatch review agents AND process their feedb
 
 **Mandatory:**
 
-- After each task in subagent-driven development
+- After each task in `/dp-cto:execute` workflow
 - After completing a major feature
 - Before merge to main
 

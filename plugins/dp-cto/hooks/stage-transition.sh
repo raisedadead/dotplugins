@@ -34,9 +34,8 @@ SKILL="${SKILL_NAME#dp-cto:}"
 
 case "$SKILL" in
   start)
-    # Plan-path extraction kept for backward compatibility with pre-v3.0
-    # markdown-based plans. In v3.0+ workflows (beads), the grep below finds
-    # nothing and PLAN_PATH stays empty — which is the expected path.
+    # Legacy: _index.md plan-path extraction (pre-v3.0 markdown plans only).
+    # v3.0+ uses beads — this code no-ops when _index.md doesn't exist.
     PLAN_PATH=""
     INDEX_FILE="$CWD/.claude/plans/_index.md"
     if [ -f "$INDEX_FILE" ]; then

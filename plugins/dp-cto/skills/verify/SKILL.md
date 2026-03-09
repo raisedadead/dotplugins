@@ -11,7 +11,7 @@ Stop. Before presenting or finalizing any research-based response, systematicall
 
 ### Step 1: Extract Claims
 
-Scan the current conversation for all factual claims derived from research tool results (WebSearch, WebFetch, MCP lookups, Context7, DeepWiki). List every claim, no matter how minor.
+Scan the current conversation for all factual claims derived from research tool results (WebSearch, WebFetch, MCP tools (`mcp__*`), Context7, DeepWiki). List every claim, no matter how minor.
 
 If no research tool calls are present in this conversation, inform the user: "No research-derived claims found in this conversation. Use WebSearch, WebFetch, or MCP tools first, then re-run /dp-cto:verify." and STOP.
 

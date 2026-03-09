@@ -75,7 +75,7 @@ Show the user the selected lenses and detected quality-gate command, then procee
 
 ## Step 1: Gather Scope
 
-1. Read the active plan path from the stage state file (if available)
+1. Read the active plan path from the stage state file (`.claude/dp-cto/*.stage.json`). If no stage file exists or the plan path is empty, skip this step — the git diff in step 2 provides sufficient scope.
 2. Run `git diff main...HEAD --name-only` to get all files changed in this cycle
    - If no diff against main (e.g., standalone invocation), use `git diff HEAD~5 --name-only` as fallback
 3. Group files by directory/module for targeted review

@@ -1,6 +1,6 @@
 ---
 name: start
-description: "Entry point for CTO orchestration. Gathers context, brainstorms approaches, writes implementation plan to .claude/plans/. Run this before /dp-cto:execute."
+description: "Entry point for CTO orchestration. Gathers context, brainstorms approaches, creates beads molecule. Run this before /dp-cto:execute."
 ---
 
 <EXTREMELY_IMPORTANT>
@@ -18,7 +18,7 @@ If you catch yourself writing application code, STOP. You are planning, not codi
 | "I'll skip brainstorming, the user knows what" | Always explore alternatives. Even clear ideas benefit from options.   |
 | "I'll write code to prototype this"            | You are planning, not coding. Describe, don't implement.              |
 | "The user's first idea is fine"                | Propose 2-3 approaches. The first idea is rarely the best.            |
-| "I'll put the plan in docs/plans/"             | Plans go to `.claude/plans/<domain>/`. Always.                        |
+| "I'll put the plan in a markdown file"         | Plans are beads molecules (`bd create`). Never markdown files.        |
 | "I'll ask 10 clarifying questions"             | Batch to 2-3 questions with opinionated defaults. Respect their time. |
 | "This is too small to need a plan"             | If it has 2+ tasks, it needs a plan. Write one.                       |
 | "I'll just start execute myself"               | Handoff only. The user decides when to execute.                       |
@@ -36,7 +36,7 @@ If the user already provided context before invoking this skill (in the same mes
 Do this automatically. No user interaction needed.
 
 1. Read `CLAUDE.md` for project conventions, tech stack, patterns
-2. Read `.claude/plans/_index.md` if it exists — understand existing plans, avoid conflicts
+2. Run `bd list --format table` if `bd` is available — understand existing plans, avoid conflicts
 3. Read recent git log (`git log --oneline -10`) for current work context
 4. Glob for key config files (`package.json`, `tsconfig.json`, `Cargo.toml`, `pyproject.toml`, etc.) to confirm tech stack
 5. Read any files the user mentioned in their brief
@@ -79,19 +79,23 @@ Present the chosen design as a single cohesive summary covering:
 2. **Component breakdown** — what gets built, file scope, interfaces between pieces
 3. **Testing strategy** — what to test, edge cases, how to verify
 
-Do a **YAGNI check** inline: flag anything that could be deferred to a later iteration. Note deferred items and remove them from scope. Proceed to plan writing.
+Do a **YAGNI check**: list anything in the design that could be deferred to a later iteration. If deferrable items exist, use `AskUserQuestion` (multiSelect) to ask: "Which items should we defer to a later iteration?" Remove deferred items from scope.
 
-## Step 5: Write Plan Files
+## Step 5: Create Beads Molecule
 
-### 5a: Derive Domain
+### 5a: Create Epic with Analysis
 
-Pick a short domain slug from the feature name (e.g., `auth`, `settings`, `api-v2`, `perf`).
+Create a beads epic with the analysis as its body, then create child tasks.
 
-Create the directory: `.claude/plans/<domain>/`
+**Create the epic:**
 
-### 5b: Write Analysis Document
+```bash
+bd create "[Feature Name]" --type epic
+```
 
-Write `.claude/plans/<domain>/01-analysis.md`:
+Record the returned epic ID (e.g., `EPIC-1`).
+
+**Set the analysis as the epic body** using `bd edit {epic-id} --body`:
 
 ```markdown
 # [Feature Name] — Analysis
@@ -117,17 +121,7 @@ Write `.claude/plans/<domain>/01-analysis.md`:
 [Items deferred during YAGNI check, or "None"]
 ```
 
-### 5c: Create Beads Molecule
-
-Create a beads epic and child tasks instead of a markdown implementation plan.
-
-**Create the epic:**
-
-```bash
-bd create "[Feature Name]" --type epic
-```
-
-Record the returned epic ID (e.g., `EPIC-1`).
+### 5b: Create Child Tasks
 
 **Create child tasks** — one `bd create` per task:
 
@@ -156,9 +150,9 @@ Rules for beads tasks:
 - Order dependencies so independent tasks are unblocked first, dependent tasks later.
 - Keep tasks focused: one concern per task. If a task touches more than 5 files, split it.
 
-### 5d: Write Agent Prompts as Issue Descriptions
+### 5c: Write Agent Prompts as Issue Descriptions
 
-For each task created in 5c, write the agent prompt as the issue description body using `bd edit {task-id} --body`. The execute skill will extract these prompts via `bd show {id} --json`.
+For each task created in 5b, write the agent prompt as the issue description body using `bd edit {task-id} --body`. The execute skill will extract these prompts via `bd show {id} --json`.
 
 Each agent prompt follows this template (written as the issue description):
 
@@ -201,7 +195,7 @@ For `[subagent:isolated]` tasks, add this additional line to the Constraints sec
 
 Rules for agent prompts:
 
-- Pull the architectural context from `01-analysis.md` — keep it to 2-3 sentences that explain how this task fits into the whole.
+- Pull the architectural context from the epic body (`bd show {epic-id} --json`) — keep it to 2-3 sentences that explain how this task fits into the whole.
 - The file list must use the exact paths from the task spec. This becomes the agent's scope boundary.
 - The agent prompt must be self-contained: an agent with no conversation history should be able to execute from the prompt alone.
 
@@ -212,33 +206,9 @@ bd list --format table
 bd ready --json
 ```
 
-Verify the task count and dependency graph look correct, then proceed to registry update.
+Verify the task count and dependency graph look correct, then proceed to handoff.
 
-## Step 6: Update Registry
-
-Read `.claude/plans/_index.md`. If it doesn't exist, create it with this header:
-
-```markdown
-# Plan Registry
-
-## Active
-```
-
-Add the new plan entry:
-
-```markdown
-### [Feature Name] (`<domain>/`)
-
-| Document                            | Type      | Status   |
-| ----------------------------------- | --------- | -------- |
-| [Analysis](<domain>/01-analysis.md) | Reference | Complete |
-
-**Beads Epic:** `{epic-id}`
-**Scope:** [One-line summary]
-**Deferred:** [Items from YAGNI check, or "None"]
-```
-
-## Step 7: Handoff
+## Step 6: Handoff
 
 Print exactly:
 
@@ -256,14 +226,13 @@ The stage machine will deny any skill except /dp-cto:execute or /dp-cto:start (r
 
 1. NEVER write application code — you are planning, not implementing
 2. NEVER skip the clarification step when genuine ambiguity exists
-3. NEVER put plans in `docs/plans/` — always `.claude/plans/<domain>/`
+3. NEVER write plans as markdown files — use beads molecules (`bd create`)
 4. NEVER use placeholder file paths — resolve actual paths from the project
 5. NEVER auto-invoke execute — handoff only
 6. NEVER ask more than 3 questions in a single clarification round
 7. NEVER skip the YAGNI check — always identify and remove deferrable items
-8. NEVER skip updating `.claude/plans/_index.md`
-9. NEVER present a single approach as if there are no alternatives
-10. NEVER write task specs without acceptance criteria
+8. NEVER present a single approach as if there are no alternatives
+9. NEVER write task specs without acceptance criteria
 
 ## Red Flags — STOP
 
@@ -273,6 +242,7 @@ The stage machine will deny any skill except /dp-cto:execute or /dp-cto:start (r
 | Asking 5+ questions in one round           | STOP. Batch to 2-3 with defaults.                 |
 | Plan has tasks with no acceptance criteria | STOP. Every task needs clear done conditions.     |
 | Task touches 6+ files                      | STOP. Split into smaller tasks.                   |
+| About to write a plan as a markdown file   | STOP. Use beads (`bd create`), not files.         |
 | Using placeholder paths like `src/foo/...` | STOP. Resolve actual paths from the project.      |
 | Skipping YAGNI check                       | STOP. Always identify what can be deferred.       |
 | About to invoke execute                    | STOP. Handoff only. User decides when to execute. |

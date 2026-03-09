@@ -1,4 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { spawn } from "node:child_process";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   runHook,
   seedStage,
@@ -13,7 +17,9 @@ import {
   getBreadcrumb,
   breadcrumbExists,
   seedBreadcrumb,
+  HOOK_DIR,
 } from "./helpers";
+import type { HookResult } from "./helpers";
 
 // WARNING: Tests that exercise stage-writing paths MUST pass `cwd: tmpDir` and
 // a `session_id` to runHook. Without cwd the hook cannot locate the stage
@@ -530,6 +536,16 @@ describe("SessionStart (session-start.sh)", () => {
     expect(await getStage(tmpDir, "test-session")).toBe("idle");
   });
 
+  test("enforcement message includes planning stage", async () => {
+    const r = await runHook(SESSION_HOOK, {
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+      ?.additionalContext as string;
+    expect(ctx).toMatch(/planning/);
+  });
+
   describe("session recovery detection", () => {
     test("clean start (no orphans): no recovery context", async () => {
       const r = await runHook(SESSION_HOOK, {
@@ -826,5 +842,87 @@ describe("Breadcrumb Tracking: execute with missing breadcrumb", () => {
     const raw = await getBreadcrumb(tmpDir);
     const breadcrumb = JSON.parse(raw);
     expect(breadcrumb.plan_path).toBe("");
+  });
+});
+
+// ─── jq-missing fail-open ──────────────────────────────────────────────────
+
+describe("jq-missing fail-open", () => {
+  let jqFreePath: string;
+
+  beforeEach(async () => {
+    const { mkdtemp, symlink } = await import("node:fs/promises");
+    jqFreePath = await mkdtemp(join(tmpdir(), "no-jq-"));
+    const bashPath = "/bin/bash";
+    await symlink(bashPath, join(jqFreePath, "bash"));
+    for (const bin of ["cat", "dirname", "basename", "tr", "grep", "tail", "mkdir"]) {
+      try {
+        const { execFileSync } = await import("node:child_process");
+        const realPath = execFileSync("which", [bin], { encoding: "utf-8" }).trim();
+        if (realPath) await symlink(realPath, join(jqFreePath, bin));
+      } catch {
+        /* skip if not found */
+      }
+    }
+  });
+
+  afterEach(async () => {
+    await rm(jqFreePath, { recursive: true, force: true });
+  });
+
+  function runHookWithoutJq(script: string, input: Record<string, unknown>): Promise<HookResult> {
+    return new Promise((resolve) => {
+      const proc = spawn("bash", [join(HOOK_DIR, script)], {
+        stdio: ["pipe", "pipe", "pipe"],
+        env: { ...process.env, PATH: jqFreePath },
+      });
+      let stdout = "";
+      let stderr = "";
+      proc.stdout.on("data", (d: Buffer) => {
+        stdout += d.toString();
+      });
+      proc.stderr.on("data", (d: Buffer) => {
+        stderr += d.toString();
+      });
+      proc.stdin.write(JSON.stringify(input));
+      proc.stdin.end();
+      proc.on("close", (code) => {
+        let json: Record<string, unknown> | null = null;
+        const trimmed = stdout.trim();
+        if (trimmed) {
+          try {
+            json = JSON.parse(trimmed);
+          } catch {}
+        }
+        resolve({ stdout: trimmed, stderr: stderr.trim(), exitCode: code ?? 1, json });
+      });
+    });
+  }
+
+  test.each([
+    "intercept-orchestration.sh",
+    "stage-transition.sh",
+    "completion-gate.sh",
+    "research-validator.sh",
+    "session-cleanup.sh",
+  ])("%s exits 0 when jq is missing", async (hook) => {
+    const r = await runHookWithoutJq(hook, {
+      tool_name: "Skill",
+      tool_input: { skill: "dp-cto:start" },
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+  });
+
+  test("session-start.sh outputs degraded message when jq missing", async () => {
+    const r = await runHookWithoutJq("session-start.sh", {
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.json).not.toBeNull();
+    const hso = r.json?.hookSpecificOutput as Record<string, unknown> | undefined;
+    expect(hso).toBeDefined();
   });
 });

@@ -32,7 +32,7 @@ RECOVERY_CONTEXT=""
 
 is_non_terminal() {
   case "$1" in
-    planned|executing|polishing) return 0 ;;
+    planning|planned|executing|polishing) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -153,7 +153,7 @@ ALL superpowers skills are DENIED by the dp-cto plugin hook and will be blocked:
 dp-cto v3.0 replaces all superpowers functionality natively. Uninstall superpowers to avoid conflicts.
 
 dp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requested:
-- /dp-cto:start — brainstorm approaches, write implementation plan to .claude/plans/. Handles the full brainstorming and plan writing lifecycle.
+- /dp-cto:start — brainstorm approaches, create beads molecule. Handles the full brainstorming and plan writing lifecycle.
 - /dp-cto:execute — execute a plan using adaptive dispatch (subagents, iterative loops, or collaborative teams based on plan classification). Requires a plan from /dp-cto:start. Auto-chains into /dp-cto:polish on completion.
 - /dp-cto:polish — multi-perspective code review and post-implementation polishing. Spawns parallel review agents with configurable lenses (security, simplification, test gaps, linting, performance, docs). Auto-chained after execute or invokable standalone from complete stage.
 - /dp-cto:ralph — subagent-based autonomous iterative loop with fresh context per iteration. Args: PROMPT [--max-iterations N] [--completion-promise TEXT] [--quality-gate CMD].
@@ -170,7 +170,7 @@ These are DISTINCT skills. /dp-cto:execute is NOT the same as executing-plans. N
 Workflow: /dp-cto:start → /dp-cto:execute → /dp-cto:polish.
 
 Stage enforcement is active. The hook tracks your workflow stage and only allows valid transitions:
-idle → start → planned → execute → executing → polish → polishing → complete → start (new cycle)
+idle → planning (start running) → planned (start done) → executing (execute running) → polishing (execute done) → complete (polish done) → start (new cycle)
 ralph, verify, and polish are allowed during executing. verify is allowed during polishing. polish is allowed from complete (standalone re-polish). ralph-cancel is always allowed.
 Out-of-order skill invocations will be denied by the hook.
 

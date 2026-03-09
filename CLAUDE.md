@@ -105,7 +105,7 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 **CTO integration** (three points):
 
-- CTO classifies beads tasks as `[subagent]`, `[iterative]`, or `[collaborative]`; iterative tasks dispatch via `/dp-cto:ralph`
+- CTO classifies beads tasks as `[subagent]`, `[iterative]`, or `[collaborative]`; `[iterative]` tasks are first dispatched as subagents — if they fail after 2 fix rounds, CTO reports the failure and suggests the user invoke `/dp-cto:ralph` manually
 - CTO's review fix loop reports failure after 2 fix attempts and suggests user invoke ralph manually
 - ralph reads from active CTO plan when invoked without args
 
@@ -135,7 +135,7 @@ The dp-cto plugin includes a PostToolUse hook (`research-validator.sh`) that fir
 
 dp-cto v3.0 uses beads (via the `bd` CLI) for plan storage and task scheduling, replacing markdown-based implementation plans:
 
-- **`/dp-cto:start` molecule creation**: After brainstorming and analysis (unchanged), creates a beads epic via `bd create`, child tasks via `bd create --parent`, and dependency edges via `bd dep add`. Agent prompts are stored as beads issue descriptions via `bd edit --body`. The `01-analysis.md` analysis doc remains as a markdown reference.
+- **`/dp-cto:start` molecule creation**: After brainstorming and analysis (unchanged), creates a beads epic via `bd create`, child tasks via `bd create --parent`, and dependency edges via `bd dep add`. Analysis content is stored as the epic's body via `bd edit --body`. Agent prompts are stored as task descriptions via `bd edit --body`.
 - **`/dp-cto:execute` beads dispatch**: Queries `bd ready --json` for tasks with all blockers resolved, extracts agent prompts from `bd show {task-id} --json`, dispatches agents, and marks completion with `bd close {task-id}`. Re-queries `bd ready` after each round to discover newly unblocked tasks.
 - **`bd prime` context injection**: SessionStart hook runs `bd prime` when `bd` is available and `.beads/` exists in the working directory. Injects a compact 1-2k token summary into the session context (instead of the full plan).
 - **Graceful degradation**: If `bd` is not installed or no `.beads/` directory exists, beads features are skipped silently. The hooks and skills still function for stage tracking and enforcement.
@@ -164,16 +164,39 @@ These are side-effect-free quality skills: no stage transitions, always allowed 
 
 Breadcrumb file at `.claude/dp-cto/active.json` tracks the active session:
 
-- Written on `planned`, updated through stage transitions, cleared on `complete`
+- Written on `planned` (after start completes), updated to `polishing` (after execute completes), cleared on `complete` (after polish completes)
 - SessionStart checks the breadcrumb (fast path), then scans `*.stage.json` for non-terminal states (fallback)
 - Multiple orphaned stage files resolved by latest `started_at`
 - SessionEnd preserves stage files with `ended` status instead of deleting — enables recovery detection on next session start
 
+### Key design: stage machine
+
+The dp-cto plugin enforces a linear workflow via stage tracking in `.claude/dp-cto/{session}.stage.json`:
+
+```
+idle ──→ planning ──→ planned ──→ executing ──→ polishing ──→ complete
+ ↑        (start       (start      (execute      (execute       │
+ │         running)      done)       running)      done)         │
+ └───────────────────────────────────────────────────────────────┘
+                           new cycle (start)
+```
+
+**Transient states** (`planning`, `executing`, `polishing`): Set by PreToolUse when a skill starts. If interrupted, recovery detects these as non-terminal.
+
+**Resting states** (`idle`, `planned`, `complete`): Set by PostToolUse when a skill completes. Stable between skill invocations.
+
+Side-effect-free skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`) and `ralph-cancel` are allowed from any stage.
+
 ## Prerequisites
 
-- **`bd` CLI** (beads): Required for plan storage and task scheduling. Without it, beads features degrade gracefully but `/dp-cto:start` cannot create molecules and `/dp-cto:execute` cannot use `bd ready` scheduling.
-- **`jq`**: Required by all hooks for JSON parsing. Hooks fail open (exit 0) if jq is unavailable.
-- **Claude Code CLI**: The runtime for the plugin system.
+| Dependency       | Required      | If Missing                                                                                                                                                           |
+| ---------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash`           | Yes (runtime) | Hooks cannot execute at all                                                                                                                                          |
+| `jq`             | Yes (runtime) | All hooks fail open — no stage tracking, no enforcement, no research validation, no completion gate                                                                  |
+| `bd` CLI (beads) | No (optional) | Beads features skipped silently — `/dp-cto:start` cannot create molecules, `/dp-cto:execute` cannot use `bd ready` scheduling, `bd prime` context injection disabled |
+| `shellcheck`     | No (dev only) | `pnpm run validate` fails but plugin functions normally at runtime                                                                                                   |
+
+All hooks are designed to **fail open** — if a dependency is missing, the hook exits 0 without blocking the user. This means the plugin degrades gracefully but silently: stage enforcement, research validation, and completion gates all become inactive without `jq`.
 
 ## Versioning and Releases
 
