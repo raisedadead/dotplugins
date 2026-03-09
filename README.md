@@ -29,7 +29,13 @@ Requires: `jq` on PATH. Optional: `bd` CLI (beads) for structured task schedulin
                     find issues, auto-fix critical/warning, you pick suggestions.
 ```
 
-That's the core loop. Start → Execute → Polish → Done.
+```
+                  writes        dispatches       fixes
+                   plan           agents        findings
+  /dp-cto:start ────────> /dp-cto:execute ────────> /dp-cto:polish ────────> Done
+       ^                                                                       │
+       └────────────────────── new feature ────────────────────────────────────┘
+```
 
 ### Quality Skills (use anytime)
 
