@@ -1,160 +1,134 @@
 # dotplugins
 
-A plugin marketplace for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — orchestration, iterative development loops, and automated research validation.
+A plugin marketplace for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
-## Installation
+## dp-cto — CTO Orchestration Plugin
+
+dp-cto turns Claude Code into a CTO that plans features, dispatches agents to build them, reviews their work, and polishes the result.
+
+### Install
 
 ```bash
 claude plugin marketplace add raisedadead/dotplugins
 claude plugin install dp-cto@dotplugins
 ```
 
+Requires: `jq` on PATH. Optional: `bd` CLI (beads) for structured task scheduling.
+
+### The Workflow (3 commands)
+
+```
+/dp-cto:start   →  You describe the feature. Plugin brainstorms approaches,
+                    asks clarifying questions, writes a plan with tasks.
+
+/dp-cto:execute →  Plugin dispatches agents in parallel to implement each task.
+                    Reviews their work. Fix loop if needed. Commit checkpoints.
+
+/dp-cto:polish  →  Auto-chained after execute. 6 specialist review agents
+                    (security, dead code, test gaps, linting, perf, docs)
+                    find issues, auto-fix critical/warning, you pick suggestions.
+```
+
+That's the core loop. Start → Execute → Polish → Done.
+
+### Quality Skills (use anytime)
+
+| Skill                 | Purpose                                                    |
+| --------------------- | ---------------------------------------------------------- |
+| `/dp-cto:tdd`         | Enforces RED-GREEN-REFACTOR. No code without failing test. |
+| `/dp-cto:debug`       | 4-phase root cause investigation before any fix attempt.   |
+| `/dp-cto:verify-done` | Blocks completion claims without test output evidence.     |
+| `/dp-cto:review`      | Dispatches review agent, processes feedback with rigor.    |
+| `/dp-cto:sweep`       | Finds and fixes dead code, naming drift, stale comments.   |
+
+### Escape Hatches
+
+| Skill                  | When                                                                             |
+| ---------------------- | -------------------------------------------------------------------------------- |
+| `/dp-cto:ralph`        | Task keeps failing — iterative loop with fresh agent each attempt + quality gate |
+| `/dp-cto:ralph-cancel` | Stop an active ralph loop                                                        |
+| `/dp-cto:verify`       | Deep-validate research findings claim by claim                                   |
+
+### What Happens Behind the Scenes
+
+Hooks enforce discipline automatically — you never invoke them:
+
+- **Stage machine** prevents running execute before start, or polish before execute
+- **Completion gate** warns when agents claim "tests pass" without showing test output
+- **Research validator** injects verification checklists after web searches and MCP calls
+- **Session recovery** detects interrupted workflows and offers to resume next session
+- **Superpowers blocked** — dp-cto replaces all superpowers skills natively; the old ones are denied
+
+### Mental Model
+
+You are the CTO. You never write code or review code yourself. You:
+
+1. Describe what to build
+2. Approve the plan
+3. Watch agents implement
+4. Approve commit checkpoints
+5. Pick which suggestions to apply in polish
+
 ---
 
-## dp-cto — CTO Orchestration Plugin
+## Architecture
 
-A CTO-style orchestration layer that sits on top of [superpowers](https://github.com/obra/superpowers). Superpowers handles individual contributor skills (TDD, debugging, code review); dp-cto handles planning, parallel execution, and iterative automation.
+### Adaptive Dispatch
 
-### Skills
+Execute classifies each task and picks the right primitive:
 
-| Skill                  | Purpose                                                                                                                       |
-| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| `/dp-cto:start`        | Brainstorm approaches, write an implementation plan to `.claude/plans/`                                                       |
-| `/dp-cto:execute`      | Execute a plan with [Agent Teams](https://docs.anthropic.com/en/docs/claude-code/agent-teams) and optional worktree isolation |
-| `/dp-cto:ralph`        | Teammate-based iterative loop — fresh agent context per iteration                                                             |
-| `/dp-cto:ralph-cancel` | Cancel an active ralph loop                                                                                                   |
-| `/dp-cto:polish`       | Multi-perspective code review with configurable lenses                                                                        |
-| `/dp-cto:verify`       | Manual deep-validation of research findings                                                                                   |
+| Classification        | Primitive                    | When                                        |
+| --------------------- | ---------------------------- | ------------------------------------------- |
+| `[subagent]`          | `Agent(run_in_background)`   | Independent work, parallelizable            |
+| `[subagent:isolated]` | `Agent(isolation: worktree)` | Needs filesystem isolation from other tasks |
+| `[iterative]`         | `/dp-cto:ralph`              | Needs quality gate + multiple attempts      |
+| `[collaborative]`     | `TeamCreate + SendMessage`   | Rare — agents need to coordinate            |
 
-### Workflow
+Task scheduling uses beads dependency graphs (`bd ready --json`) to discover what's unblocked after each round.
 
-The standard development cycle:
+### Harness Engineering
 
-```
-                  writes        dispatches       fixes
-                   plan           agents        findings
-  /dp-cto:start ────────> /dp-cto:execute ────────> /dp-cto:polish ────────> Complete
-       ^                                                                        │
-       └────────────────────── new feature ─────────────────────────────────────┘
-```
-
-### Stage Enforcement
-
-Every session follows a strict state machine. The plugin tracks the current stage and blocks out-of-order skill invocations:
+Hooks act as defense-in-depth guardrails. They don't block — they catch failure modes early:
 
 ```
-  ┌──────────┐
-  │   idle   │
-  └────┬─────┘
-       │ /start
-       v
-  ┌──────────┐
-  │ planning │
-  └────┬─────┘
-       │ plan written
-       v
-  ┌──────────┐ <── /start (revise)
-  │ planned  │ ──────────────────┐
-  └────┬─────┘                   │
-       │ /execute                │
-       v                         │
-  ┌──────────────────────┐       │
-  │      executing       │       │
-  │ (/ralph, /verify ok) │       │
-  └──────────┬───────────┘       │
-             │ exec complete     │
-             v                   │
-  ┌──────────────────────┐       │
-  │      polishing       │       │
-  └──────────┬───────────┘       │
-             │ /polish done      │
-             v                   │
-  ┌──────────────────────┐       │
-  │      complete        │       │
-  └──────────┬───────────┘       │
-             │ /start (new cycle)│
-             └───────────────────┘
-
-  /ralph-cancel is always allowed regardless of stage.
+SessionStart ──→ inject context, prime beads, detect recovery
+PreToolUse   ──→ stage enforcement, skill filtering (3-tier: deny/warn/pass)
+PostToolUse  ──→ research validation, stage transitions, completion gate
+SessionEnd   ──→ preserve state for next-session recovery
 ```
 
-### Hook System
+The completion gate detects agent claims like "all tests pass" without test runner output. The research validator injects verification checklists after every web search and MCP call. Neither blocks — they inject advisory context.
 
-Four lifecycle hooks drive the plugin's behavior:
+### Stage Machine
 
-```
-  ┌─ SessionStart ────────────────────────────────────────────────────────┐
-  │  Inject enforcement context (stage machine rules, skill list)         │
-  └───────────────────────────────────────────────────────────────────────┘
-
-  ┌─ PreToolUse (on Skill calls) ─────────────────────────────────────────┐
-  │                                                                       │
-  │   Skill invoked                                                       │
-  │       │                                                               │
-  │       ├── dp-cto:* skill? ──yes──> Stage valid? ──yes──> ALLOW        │
-  │       │                                │                              │
-  │       │                               no ──> DENY (with reason)       │
-  │       │                                                               │
-  │       └── other skill? ──> Tiered filtering:                          │
-  │               Tier 1 DENY  — orchestration skills ──> block           │
-  │               Tier 2 PASS  — quality skills ──> allow                 │
-  │               Tier 3 WARN  — orchestration-adjacent ──> allow + warn  │
-  │               Tier 4 PASS  — everything else ──> allow                │
-  │                                                                       │
-  └───────────────────────────────────────────────────────────────────────┘
-
-  ┌─ PostToolUse ────────────────────────────────────────────────────────┐
-  │  After WebSearch / WebFetch / MCP  -->  inject verification checklist│
-  │  After dp-cto Skill completion     -->  advance stage machine       │
-  └─────────────────────────────────────────────────────────────────────┘
-
-  ┌─ SessionEnd ──────────────────────────────────────────────────────────┐
-  │  Clean up session state files                                         │
-  └───────────────────────────────────────────────────────────────────────┘
-```
-
-### Tiered Skill Interception
-
-The PreToolUse hook classifies every `Skill` call through four tiers:
-
-| Tier         | Action                     | Skills                                                                                                                                                                                   |
-| ------------ | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **1 — Deny** | Block + redirect to dp-cto | `executing-plans`, `dispatching-parallel-agents`, `subagent-driven-development`, `using-git-worktrees`, `finishing-a-development-branch`, `brainstorming`, `writing-plans`, `ralph-loop` |
-| **2 — Pass** | Allow through              | `test-driven-development`, `requesting-code-review`, `receiving-code-review`, `systematic-debugging`, `verification-before-completion`, `writing-skills`, `using-superpowers`            |
-| **3 — Warn** | Allow with warning         | Unknown skills matching `*parallel*`, `*dispatch*`, `*orchestrat*`, `*worktree*`, `*subagent*`                                                                                           |
-| **4 — Pass** | Silent pass-through        | Everything else                                                                                                                                                                          |
-
-### Ralph: Iterative Loops
-
-`/dp-cto:ralph` replaces the upstream `ralph-loop` with a Teammates-based architecture:
-
-- Each iteration spawns a fresh `general-purpose` agent (prevents context rot)
-- Session-scoped state files in `.claude/ralph/{SESSION_ID}.md`
-- Configurable quality gates run between iterations
-- Smart defaults: infers prompt from active plan, detects project toolchain for gates
+Strict state transitions prevent out-of-order skill invocations:
 
 ```
-/dp-cto:ralph "Fix all lint errors" --max-iterations 5 --quality-gate "pnpm run lint"
+idle → planning → planned → executing → polishing → complete → idle
 ```
 
-### Polish: Multi-Perspective Review
+Quality skills (tdd, debug, verify-done, review, sweep) are side-effect-free — they bypass the stage machine entirely.
 
-`/dp-cto:polish` spawns parallel review agents, each with a specific lens:
+### Fresh Context Architecture
 
-| Lens           | Focus                                        |
-| -------------- | -------------------------------------------- |
-| Security       | Vulnerabilities, injection, auth issues      |
-| Simplification | Dead code, unnecessary complexity            |
-| Test Coverage  | Gaps in test coverage                        |
-| Linting        | Formatting and style violations              |
-| Performance    | Bottlenecks, inefficient patterns _(opt-in)_ |
-| Documentation  | Missing or stale docs _(opt-in)_             |
+Ralph spawns a new `general-purpose` agent per iteration instead of continuing in-context. This prevents context rot — each iteration starts clean with only the structured state file as memory. Same pattern applies to review and fix agents in execute.
 
-Findings are severity-graded (`[CRITICAL]`, `[WARNING]`, `[SUGGESTION]`). Critical and warning findings are auto-fixed; suggestions are the user's choice.
+---
 
-### Research Validation
+## Design Influences
 
-A PostToolUse hook fires after every `WebSearch`, `WebFetch`, and MCP tool call, injecting a verification checklist that prompts the agent to cross-check sources. `/dp-cto:verify` provides on-demand deep-validation for research-heavy tasks.
+| Tenet                         | Inspiration                                                                                                  |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Plan before code              | [obra/superpowers](https://github.com/obra/superpowers) — structured planning as a prerequisite to execution |
+| RED-GREEN-REFACTOR            | Kent Beck's TDD — no production code without a failing test first                                            |
+| Evidence before claims        | Scientific method applied to completion — output proves the claim, not the agent's word                      |
+| Entropy is garbage collection | Systems entropy compounds when agents replicate patterns — good and bad — without curation                   |
+| Defense-in-depth              | Harness engineering — hooks catch common agent failure modes without blocking the workflow                   |
+| Context rot prevention        | Fresh agent per iteration — long-running agents accumulate stale assumptions                                 |
+| Orchestrate, don't implement  | CTO mental model — delegate everything, review everything, write nothing                                     |
+| Adaptive dispatch             | Not all tasks are alike — subagents for parallel, iterative for stubborn, collaborative for coupled          |
+
+dp-cto v3.0 started as a layer on top of [superpowers](https://github.com/obra/superpowers) and evolved to replace it entirely — native quality skills, beads-based scheduling, and harness engineering hooks made the external dependency unnecessary.
 
 ---
 
@@ -170,10 +144,11 @@ dotplugins/
 │       │   └── plugin.json       # Plugin metadata + version
 │       ├── hooks/
 │       │   ├── hooks.json        # Hook definitions
-│       │   ├── session-start.sh  # Injects enforcement context
+│       │   ├── session-start.sh  # Injects enforcement context + beads prime
 │       │   ├── session-cleanup.sh
-│       │   ├── intercept-orchestration.sh  # PreToolUse: tiered skill filtering
+│       │   ├── intercept-orchestration.sh  # PreToolUse: stage enforcement + skill filtering
 │       │   ├── stage-transition.sh         # PostToolUse: stage machine advances
+│       │   ├── completion-gate.sh          # PostToolUse: completion claim verification
 │       │   ├── lib-stage.sh               # Shared stage read/write helpers
 │       │   └── research-validator.sh      # PostToolUse: verification checklists
 │       └── skills/
@@ -182,7 +157,12 @@ dotplugins/
 │           ├── ralph/SKILL.md
 │           ├── ralph-cancel/SKILL.md
 │           ├── polish/SKILL.md
-│           └── verify/SKILL.md
+│           ├── verify/SKILL.md
+│           ├── tdd/SKILL.md
+│           ├── debug/SKILL.md
+│           ├── verify-done/SKILL.md
+│           ├── review/SKILL.md
+│           └── sweep/SKILL.md
 ├── tests/                        # Vitest hook contract + schema tests
 ├── scripts/
 │   ├── validate.sh               # Full plugin validation suite

@@ -70,13 +70,9 @@ Detect lint/format/test commands for the quality gate (same pattern as polish):
 - Look for config files: `.eslintrc*`, `biome.json`, `prettier*`, `oxlint*`, `tsconfig.json`
 - Build a quality-gate command chain (e.g., `pnpm test && pnpm run lint && pnpm run fmt:check`)
 
-### 0c: Confirm Configuration
+### 0c: Show Configuration and Proceed
 
-Show the user:
-
-- Selected categories
-- Detected quality-gate command
-- Say **"Ready to start entropy sweep."** then PAUSE for confirmation.
+Show the user the selected categories and detected quality-gate command, then proceed directly to scope gathering.
 
 ## Step 1: Gather Scope
 

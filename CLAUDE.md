@@ -67,8 +67,8 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 - **dp-cto skills**: stage enforcement — validates the current workflow stage allows the requested skill (e.g., `execute` requires `planned` stage). Quality skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`) and `ralph-cancel` always pass.
 - **Tier 1 DENY**: ALL superpowers skills (orchestration + quality + meta) — dp-cto v3.0 replaces all superpowers functionality natively. Full list: `executing-plans`, `dispatching-parallel-agents`, `subagent-driven-development`, `using-git-worktrees`, `finishing-a-development-branch`, `ralph-loop`, `brainstorming`, `writing-plans`, `test-driven-development`, `requesting-code-review`, `receiving-code-review`, `systematic-debugging`, `verification-before-completion`, `writing-skills`, `using-superpowers`.
-- **Tier 3 WARN**: unknown skills with orchestration-adjacent names get a warning
-- **Tier 4 PASS**: everything else passes silently
+- **Tier 2 WARN**: unknown skills with orchestration-adjacent names get a warning
+- **Tier 3 PASS**: everything else passes silently
 
 **PostToolUse** — three hooks:
 
@@ -90,8 +90,7 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 - **Phase 2 — Iterative dispatch**: `[iterative]` tasks invoke `/dp-cto:ralph` (sequential foreground subagent loop). No team collision since ralph is subagent-based.
 - **Phase 3 — Collaborative dispatch**: `[collaborative]` tasks (rare) use `TeamCreate` + teammates + `SendMessage` for inter-agent coordination. Only phase that creates a team.
 - **Review**: Subagent results reviewed via fresh review agents. Fix loop spawns fresh fix agents. After 2 failed fix rounds, mark done with `bd close`, report failure, and suggest user invoke `/dp-cto:ralph` manually.
-- **Commit checkpoints**: After each task batch passes review, CTO asks user if they want to commit progress.
-- **Confirmation points**: Only "Ready to integrate" pause. No isolation question, no "ready to provision" pause.
+- **Hands-off execution**: No confirmation pauses during execute. No commit checkpoints, no "ready to integrate" gate. Execute runs autonomously with the stage machine, completion gate, and quality gate as safety nets.
 
 ### Key design: dp-cto:ralph iterative loops
 

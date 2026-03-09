@@ -137,19 +137,7 @@ For each completed task (from any dispatch type), run a two-stage review:
 
 NEVER proceed with open review issues.
 
-## Step 5b: Commit Checkpoint
-
-After each task batch passes review, ask the user:
-
-**"Tasks [list] passed review. Want to commit this progress before continuing?"**
-
-If yes, let the user handle the commit. If no, proceed to next batch or integration.
-
-This checkpoint prevents losing reviewed work if a later task or the session itself fails.
-
 ## Step 6: Integrate
-
-Say **"Ready to integrate."** then PAUSE for user confirmation.
 
 - Run full test suite after all tasks complete
 - If tests fail, use `dp-cto:debug` to identify the root cause

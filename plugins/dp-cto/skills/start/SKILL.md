@@ -73,25 +73,19 @@ Lead with your recommendation and explain why. Use `AskUserQuestion` with the ap
 
 ## Step 4: Design Validation
 
-Present the chosen design in 2-3 sections. Each section is 200-300 words covering:
+Present the chosen design as a single cohesive summary covering:
 
 1. **Architecture and data flow** — how components connect, what data moves where
 2. **Component breakdown** — what gets built, file scope, interfaces between pieces
 3. **Testing strategy** — what to test, edge cases, how to verify
 
-After each section, ask: **"This look right?"**
-
-If the user says yes, continue. If they want changes, adjust and re-present that section only.
-
-After all sections validated, do a **YAGNI check**: list anything in the design that could be deferred to a later iteration. Ask the user if they agree to defer those items. Remove deferred items from scope.
+Do a **YAGNI check** inline: flag anything that could be deferred to a later iteration. Note deferred items and remove them from scope. Proceed to plan writing.
 
 ## Step 5: Write Plan Files
 
 ### 5a: Derive Domain
 
 Pick a short domain slug from the feature name (e.g., `auth`, `settings`, `api-v2`, `perf`).
-
-Confirm with the user: **"I'll file this under `.claude/plans/<domain>/`. Sound right?"**
 
 Create the directory: `.claude/plans/<domain>/`
 
@@ -218,7 +212,7 @@ bd list --format table
 bd ready --json
 ```
 
-Confirm the task count, dependency graph, and ready tasks look correct before proceeding.
+Verify the task count and dependency graph look correct, then proceed to registry update.
 
 ## Step 6: Update Registry
 
@@ -266,7 +260,7 @@ The stage machine will deny any skill except /dp-cto:execute or /dp-cto:start (r
 4. NEVER use placeholder file paths — resolve actual paths from the project
 5. NEVER auto-invoke execute — handoff only
 6. NEVER ask more than 3 questions in a single clarification round
-7. NEVER skip the YAGNI check — always identify deferrable items
+7. NEVER skip the YAGNI check — always identify and remove deferrable items
 8. NEVER skip updating `.claude/plans/_index.md`
 9. NEVER present a single approach as if there are no alternatives
 10. NEVER write task specs without acceptance criteria
