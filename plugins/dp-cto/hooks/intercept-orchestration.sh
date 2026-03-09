@@ -115,22 +115,8 @@ case "$SKILL_NAME" in
     ;;
 esac
 
-# Strip superpowers: prefix if present
-BARE_SKILL="${SKILL_NAME#superpowers:}"
-
-# Tier 1: DENY — ALL superpowers skills (orchestration + quality + meta)
-# dp-cto v3.0 replaces all superpowers functionality natively
-# NOTE: This skill list must stay in sync with the enforcement message in session-start.sh
-case "$BARE_SKILL" in
-  executing-plans|dispatching-parallel-agents|subagent-driven-development|using-git-worktrees|finishing-a-development-branch|ralph-loop|brainstorming|writing-plans|test-driven-development|requesting-code-review|receiving-code-review|systematic-debugging|verification-before-completion|writing-skills|using-superpowers)
-    jq -n --arg skill "$SKILL_NAME" \
-      '{hookSpecificOutput: {permissionDecision: "deny", permissionDecisionReason: ("The skill " + $skill + " is denied. dp-cto v3.0 replaces all superpowers skills. Use dp-cto equivalents. Uninstall superpowers to avoid conflicts.")}}'
-    exit 0
-    ;;
-esac
-
-# Tier 2: WARN — unknown skills with orchestration-adjacent names
-case "$BARE_SKILL" in
+# Tier 1: WARN — unknown skills with orchestration-adjacent names
+case "$SKILL_NAME" in
   *parallel*|*dispatch*|*orchestrat*|*worktree*|*subagent*)
     jq -n --arg skill "$SKILL_NAME" \
       '{systemMessage: ("WARNING: Unknown skill " + $skill + " has an orchestration-adjacent name. If this is an orchestration skill, use /dp-cto:start or /dp-cto:execute instead. Allowing execution.")}'
@@ -138,5 +124,5 @@ case "$BARE_SKILL" in
     ;;
 esac
 
-# Tier 3: PASS silently — everything else
+# Tier 2: PASS silently — everything else
 exit 0

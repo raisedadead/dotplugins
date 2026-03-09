@@ -22,7 +22,7 @@ Requires: `jq` on PATH. Optional: `bd` CLI (beads) for structured task schedulin
                     asks clarifying questions, writes a plan with tasks.
 
 /dp-cto:execute →  Plugin dispatches agents in parallel to implement each task.
-                    Reviews their work. Fix loop if needed. Commit checkpoints.
+                    Reviews their work. Fix loop if needed. Runs autonomously.
 
 /dp-cto:polish  →  Auto-chained after execute. 6 specialist review agents
                     (security, dead code, test gaps, linting, perf, docs)
@@ -63,7 +63,6 @@ Hooks enforce discipline automatically — you never invoke them:
 - **Completion gate** warns when agents claim "tests pass" without showing test output
 - **Research validator** injects verification checklists after web searches and MCP calls
 - **Session recovery** detects interrupted workflows and offers to resume next session
-- **Superpowers blocked** — dp-cto replaces all superpowers skills natively; the old ones are denied
 
 ### Mental Model
 
@@ -72,8 +71,7 @@ You are the CTO. You never write code or review code yourself. You:
 1. Describe what to build
 2. Approve the plan
 3. Watch agents implement
-4. Approve commit checkpoints
-5. Pick which suggestions to apply in polish
+4. Pick which suggestions to apply in polish
 
 ---
 
@@ -110,9 +108,8 @@ Hooks act as defense-in-depth guardrails. They don't block — they catch failur
   │       │                         no ──> DENY (with reason)           │
   │       │                                                             │
   │       └── other skill? ──> Tiered filtering:                        │
-  │               Tier 1 DENY  — superpowers skills ──> block           │
-  │               Tier 2 WARN  — orchestration-adjacent ──> allow+warn  │
-  │               Tier 3 PASS  — everything else ──> allow              │
+  │               Tier 1 WARN  — orchestration-adjacent ──> allow+warn  │
+  │               Tier 2 PASS  — everything else ──> allow              │
   │                                                                     │
   └─────────────────────────────────────────────────────────────────────┘
 
@@ -174,18 +171,18 @@ Ralph spawns a new `general-purpose` agent per iteration instead of continuing i
 
 ## Design Influences
 
-| Tenet                         | Inspiration                                                                                                  |
-| ----------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| Plan before code              | [obra/superpowers](https://github.com/obra/superpowers) — structured planning as a prerequisite to execution |
-| RED-GREEN-REFACTOR            | Kent Beck's TDD — no production code without a failing test first                                            |
-| Evidence before claims        | Scientific method applied to completion — output proves the claim, not the agent's word                      |
-| Entropy is garbage collection | Systems entropy compounds when agents replicate patterns — good and bad — without curation                   |
-| Defense-in-depth              | Harness engineering — hooks catch common agent failure modes without blocking the workflow                   |
-| Context rot prevention        | Fresh agent per iteration — long-running agents accumulate stale assumptions                                 |
-| Orchestrate, don't implement  | CTO mental model — delegate everything, review everything, write nothing                                     |
-| Adaptive dispatch             | Not all tasks are alike — subagents for parallel, iterative for stubborn, collaborative for coupled          |
+| Tenet                         | Inspiration                                                                                         |
+| ----------------------------- | --------------------------------------------------------------------------------------------------- |
+| Plan before code              | Structured planning as a prerequisite to execution — brainstorm → plan → implement                  |
+| RED-GREEN-REFACTOR            | Kent Beck's TDD — no production code without a failing test first                                   |
+| Evidence before claims        | Scientific method applied to completion — output proves the claim, not the agent's word             |
+| Entropy is garbage collection | Systems entropy compounds when agents replicate patterns — good and bad — without curation          |
+| Defense-in-depth              | Harness engineering — hooks catch common agent failure modes without blocking the workflow          |
+| Context rot prevention        | Fresh agent per iteration — long-running agents accumulate stale assumptions                        |
+| Orchestrate, don't implement  | CTO mental model — delegate everything, review everything, write nothing                            |
+| Adaptive dispatch             | Not all tasks are alike — subagents for parallel, iterative for stubborn, collaborative for coupled |
 
-dp-cto v3.0 started as a layer on top of [superpowers](https://github.com/obra/superpowers) and evolved to replace it entirely — native quality skills, beads-based scheduling, and harness engineering hooks made the external dependency unnecessary.
+dp-cto v3.0 evolved from prompt-based skill enforcement to hook-based mechanical enforcement — native quality skills, beads-based scheduling, and harness engineering hooks.
 
 ---
 

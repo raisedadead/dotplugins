@@ -81,6 +81,14 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     test("ralph is denied", async () => {
       expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /start/i);
     });
+
+    test("polish is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:polish")), /Run \/dp-cto:start first/);
+    });
+
+    test("verify is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /Run \/dp-cto:start first/);
+    });
   });
 
   describe("planning stage", () => {
@@ -191,6 +199,10 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     test("ralph-cancel is allowed (safety valve)", async () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
     });
+
+    test("polish is allowed (re-invocation)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+    });
   });
 
   describe("complete stage", () => {
@@ -286,53 +298,6 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       );
     });
   });
-});
-
-// ─── Superpowers Interception ───────────────────────────────────────────────
-
-describe("Superpowers Interception (intercept-orchestration.sh)", () => {
-  test("non-Skill tool passes silently", async () => {
-    const r = await runHook(HOOK, { tool_name: "Bash" });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toBe("");
-    expect(r.json).toBeNull();
-  });
-
-  describe("Tier 1: deny orchestration skills", () => {
-    test.each([
-      "superpowers:executing-plans",
-      "superpowers:brainstorming",
-      "superpowers:dispatching-parallel-agents",
-      "superpowers:subagent-driven-development",
-      "superpowers:using-git-worktrees",
-      "superpowers:finishing-a-development-branch",
-      "superpowers:writing-plans",
-      "superpowers:ralph-loop",
-    ])("%s is denied", async (skill) => {
-      const r = await runHook(HOOK, skillInput(skill));
-      expect(r.exitCode).toBe(0);
-      const hso = r.json?.hookSpecificOutput as Record<string, unknown>;
-      expect(hso?.permissionDecision).toBe("deny");
-    });
-  });
-
-  describe("Tier 1: deny quality/meta superpowers skills", () => {
-    test.each([
-      "superpowers:test-driven-development",
-      "superpowers:requesting-code-review",
-      "superpowers:receiving-code-review",
-      "superpowers:systematic-debugging",
-      "superpowers:verification-before-completion",
-      "superpowers:writing-skills",
-      "superpowers:using-superpowers",
-    ])("%s is denied", async (skill) => {
-      const r = await runHook(HOOK, skillInput(skill));
-      expect(r.exitCode).toBe(0);
-      const hso = r.json?.hookSpecificOutput as Record<string, unknown>;
-      expect(hso?.permissionDecision).toBe("deny");
-      expect(hso?.permissionDecisionReason).toMatch(/Uninstall superpowers/);
-    });
-  });
 
   describe("dp-cto quality skills pass through", () => {
     test.each([
@@ -342,7 +307,10 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
       "dp-cto:review",
       "dp-cto:sweep",
     ])("%s is allowed from idle", async (skill) => {
-      expectAllowed(await runHook(HOOK, skillInput(skill)));
+      const r = await runHook(HOOK, skillInput(skill));
+      expectAllowed(r);
+      expect(r.stdout).toBe("");
+      expect(r.json).toBeNull();
     });
 
     test.each(["planning", "planned", "executing", "polishing", "complete"])(
@@ -360,24 +328,45 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
         }
       },
     );
+
+    test("quality skills do not write stage transitions", async () => {
+      await seedStage(tmpDir, "test-session", "executing");
+      await runHook(HOOK, skillInput("dp-cto:tdd"));
+      expect(await getStage(tmpDir, "test-session")).toBe("executing");
+    });
+  });
+});
+
+// ─── Skill Interception (non-dp-cto) ─────────────────────────────────────
+
+describe("Skill Interception (intercept-orchestration.sh)", () => {
+  test("non-Skill tool passes silently", async () => {
+    const r = await runHook(HOOK, { tool_name: "Bash" });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe("");
+    expect(r.json).toBeNull();
   });
 
-  describe("Tier 2: warn for orchestration-adjacent unknown skills", () => {
+  describe("Tier 1: warn for orchestration-adjacent unknown skills", () => {
     test.each([
-      "superpowers:parallel-something",
-      "superpowers:dispatch-tasks",
-      "superpowers:orchestration-layer",
-      "superpowers:worktree-manager",
-      "superpowers:subagent-pool",
+      "some-plugin:parallel-dispatch",
+      "orchestration-layer",
+      "my-worktree-tool",
+      "custom:subagent-runner",
+      "dispatch-tasks",
     ])("%s emits warning", async (skill) => {
       const r = await runHook(HOOK, skillInput(skill));
       expect(r.exitCode).toBe(0);
-      expect(r.stdout).toMatch(/WARNING/);
+      expect(r.json).not.toBeNull();
+      expect((r.json as Record<string, unknown>)?.systemMessage).toMatch(/WARNING/);
     });
   });
 
-  test("Tier 3: non-superpowers skill passes silently", async () => {
-    expectAllowed(await runHook(HOOK, skillInput("some-other-skill")));
+  test("Tier 2: regular non-dp-cto skill passes silently", async () => {
+    const r = await runHook(HOOK, skillInput("some-other-skill"));
+    expectAllowed(r);
+    expect(r.stdout).toBe("");
+    expect(r.json).toBeNull();
   });
 });
 
@@ -418,7 +407,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
 
   test("non-dp-cto skill has no side effects", async () => {
     await seedStage(tmpDir, "test-session", "executing");
-    await runHook(hook, skillInput("superpowers:test-driven-development"));
+    await runHook(hook, skillInput("some-other-plugin:tdd"));
     expect(await getStage(tmpDir, "test-session")).toBe("executing");
   });
 
@@ -593,7 +582,6 @@ describe("SessionStart (session-start.sh)", () => {
 
     test("multiple orphaned stage files: picks latest by started_at", async () => {
       const { mkdir, writeFile } = await import("node:fs/promises");
-      const { join } = await import("node:path");
       const dir = join(tmpDir, ".claude", "dp-cto");
       await mkdir(dir, { recursive: true });
       await writeFile(

@@ -49,9 +49,9 @@ recover_from_breadcrumb() {
     echo "$bc" | jq -r '[.stage // "", .plan_path // "", .session_id // ""] | @tsv'
   ) || return 1
 
-  bc_stage=$(printf '%s' "$bc_stage" | tr -d '\n<>')
-  bc_plan_path=$(printf '%s' "$bc_plan_path" | tr -d '\n<>')
-  bc_session_id=$(printf '%s' "$bc_session_id" | tr -d '\n<>')
+  bc_stage=$(printf '%s' "$bc_stage" | tr -cd 'a-zA-Z0-9._-')
+  bc_plan_path=$(printf '%s' "$bc_plan_path" | tr -cd 'a-zA-Z0-9._/-')
+  bc_session_id=$(printf '%s' "$bc_session_id" | tr -cd 'a-zA-Z0-9._-')
 
   if ! is_non_terminal "$bc_stage"; then
     return 1
@@ -134,25 +134,7 @@ fi
 ENFORCEMENT_TEXT="<EXTREMELY_IMPORTANT>
 DP-CTO PLUGIN ENFORCEMENT
 
-ALL superpowers skills are DENIED by the dp-cto plugin hook and will be blocked:
-- executing-plans
-- dispatching-parallel-agents
-- subagent-driven-development
-- using-git-worktrees
-- finishing-a-development-branch
-- brainstorming
-- writing-plans
-- ralph-loop
-- test-driven-development
-- requesting-code-review
-- receiving-code-review
-- systematic-debugging
-- verification-before-completion
-- writing-skills
-- using-superpowers
-dp-cto v3.0 replaces all superpowers functionality natively. Uninstall superpowers to avoid conflicts.
-
-dp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requested:
+dp-cto skills must ALWAYS be invoked exactly as requested:
 - /dp-cto:start — brainstorm approaches, create beads molecule. Handles the full brainstorming and plan writing lifecycle.
 - /dp-cto:execute — execute a plan using adaptive dispatch (subagents, iterative loops, or collaborative teams based on plan classification). Requires a plan from /dp-cto:start. Auto-chains into /dp-cto:polish on completion.
 - /dp-cto:polish — multi-perspective code review and post-implementation polishing. Spawns parallel review agents with configurable lenses (security, simplification, test gaps, linting, performance, docs). Auto-chained after execute or invokable standalone from complete stage.
@@ -161,20 +143,18 @@ dp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requ
 - /dp-cto:verify — manual deep-validation of research findings.
 - /dp-cto:sweep — entropy management and pattern drift detection across dead code, inconsistent patterns, stale comments, and naming violations.
 
-dp-cto quality skills (native, no superpowers needed): dp-cto:tdd, dp-cto:debug, dp-cto:verify-done, dp-cto:review, dp-cto:sweep.
+dp-cto quality skills (side-effect-free, allowed from any stage): dp-cto:tdd, dp-cto:debug, dp-cto:verify-done, dp-cto:review, dp-cto:sweep.
 
 Beads integration active when bd CLI is available. Plans stored as beads molecules.
 
-These are DISTINCT skills. /dp-cto:execute is NOT the same as executing-plans. Never substitute one dp-cto skill for another.
+These are DISTINCT skills. Never substitute one dp-cto skill for another.
 
 Workflow: /dp-cto:start → /dp-cto:execute → /dp-cto:polish.
 
 Stage enforcement is active. The hook tracks your workflow stage and only allows valid transitions:
 idle → planning (start running) → planned (start done) → executing (execute running) → polishing (execute done) → complete (polish done) → start (new cycle)
 ralph, verify, and polish are allowed during executing. verify is allowed during polishing. polish is allowed from complete (standalone re-polish). ralph-cancel is always allowed.
-Out-of-order skill invocations will be denied by the hook.
-
-Enforcement: Attempts to use intercepted skills will be denied by the PreToolUse hook.
+Out-of-order skill invocations will be denied by the PreToolUse hook.
 </EXTREMELY_IMPORTANT>"
 
 if [ -n "$RECOVERY_CONTEXT" ]; then

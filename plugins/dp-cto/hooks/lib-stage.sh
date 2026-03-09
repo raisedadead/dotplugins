@@ -78,6 +78,7 @@ write_stage() {
 
   local tmpfile
   tmpfile=$(mktemp "${file}.tmp.XXXXXX")
+  chmod 600 "$tmpfile"
 
   if ! jq -n \
     --arg stage "$stage" \
@@ -111,6 +112,7 @@ write_breadcrumb() {
 
   local tmpfile
   tmpfile=$(mktemp "${file}.tmp.XXXXXX")
+  chmod 600 "$tmpfile"
 
   if ! jq -n \
     --arg session_id "$session_id" \

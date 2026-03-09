@@ -37,7 +37,7 @@ plugins/
       hooks.json                   <- hook definitions (SessionStart, PreToolUse, PostToolUse, SessionEnd)
       session-start.sh             <- injects enforcement context + bd prime on session start
       intercept-orchestration.sh   <- PreToolUse hook: stage enforcement for dp-cto skills,
-                                      denies all superpowers skills, warns on unknown
+                                      warns on orchestration-adjacent unknowns
       research-validator.sh        <- PostToolUse hook: injects verification checklists
                                       after WebSearch, WebFetch, and MCP tool calls
       completion-gate.sh           <- PostToolUse hook: detects Agent completion claims
@@ -66,9 +66,8 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 **PreToolUse** (`intercept-orchestration.sh`) — tiered Skill interception:
 
 - **dp-cto skills**: stage enforcement — validates the current workflow stage allows the requested skill (e.g., `execute` requires `planned` stage). Quality skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`) and `ralph-cancel` always pass.
-- **Tier 1 DENY**: ALL superpowers skills (orchestration + quality + meta) — dp-cto v3.0 replaces all superpowers functionality natively. Full list: `executing-plans`, `dispatching-parallel-agents`, `subagent-driven-development`, `using-git-worktrees`, `finishing-a-development-branch`, `ralph-loop`, `brainstorming`, `writing-plans`, `test-driven-development`, `requesting-code-review`, `receiving-code-review`, `systematic-debugging`, `verification-before-completion`, `writing-skills`, `using-superpowers`.
-- **Tier 2 WARN**: unknown skills with orchestration-adjacent names get a warning
-- **Tier 3 PASS**: everything else passes silently
+- **Tier 1 WARN**: unknown skills with orchestration-adjacent names get a warning
+- **Tier 2 PASS**: everything else passes silently
 
 **PostToolUse** — three hooks:
 
@@ -150,7 +149,7 @@ dp-cto v3.0 applies harness engineering patterns — defense-in-depth hooks that
 
 ### Key design: native quality skills
 
-dp-cto v3.0 ships five native quality skills, replacing external superpowers dependencies:
+dp-cto ships five native quality skills:
 
 - **`dp-cto:tdd`** — Iron law, RED-GREEN-REFACTOR, rationalization prevention
 - **`dp-cto:debug`** — 4-phase investigation, 3-fix architecture check
@@ -227,7 +226,6 @@ Follows Anthropic's official marketplace conventions:
 - dp-cto PostToolUse hook fires on ALL MCP tools (`mcp__.*`) — if this causes noise, narrow the matcher
 - Stage files are preserved on SessionEnd (not deleted) — `.claude/dp-cto/active.json` is the recovery breadcrumb
 - `bd` CLI must be on `$PATH` for beads features — hooks check `command -v bd` and degrade gracefully if absent
-- dp-cto v3.0 denies ALL superpowers skills (not just orchestration) — uninstall superpowers to avoid conflicts
 - Completion gate hook fires on ALL Agent returns — may produce advisory warnings on non-implementation agents
 
 ## Plugin Installation

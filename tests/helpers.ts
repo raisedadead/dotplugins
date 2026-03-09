@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const HOOK_DIR = join(__dirname, "..", "plugins", "dp-cto", "hooks");
-export const REPO_ROOT = join(__dirname, "..");
 
 export interface HookResult {
   stdout: string;
