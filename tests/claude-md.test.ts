@@ -55,9 +55,10 @@ describe("CLAUDE.md documentation", () => {
     });
   });
 
-  describe("commit checkpoints", () => {
-    test("documents commit checkpoint after task batches", () => {
-      expect(content).toMatch(/commit progress/i);
+  describe("hands-off execution", () => {
+    test("documents no confirmation pauses during execute", () => {
+      expect(content).toMatch(/hands-off execution/i);
+      expect(content).toMatch(/no commit checkpoints/i);
     });
   });
 
