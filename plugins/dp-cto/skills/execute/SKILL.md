@@ -28,28 +28,58 @@ If you catch yourself writing application code, STOP. You are delegating, not co
 
 The stage machine hook enforces that the planning stage has been completed before this skill runs. If you see this skill, `/dp-cto:start` has already run.
 
-## Step 1: Read Plan and Classify
+## Step 1: Read Beads Molecule and Classify
 
-1. Read the implementation plan from the stage state file or `.claude/plans/` registry
-2. Parse each task's dispatch tag: `[subagent]`, `[subagent:isolated]`, `[iterative]`, `[collaborative]`
-3. Group into three dispatch queues: subagent_tasks, iterative_tasks, collaborative_tasks
-4. Resolve dependency ordering within and across queues
+1. Query the executable frontier — tasks with no open blockers:
+
+```bash
+bd ready --json
+```
+
+2. For the full task list and dependency graph:
+
+```bash
+bd list --parent {epic-id} --json
+```
+
+3. Parse each task's dispatch tag from the title suffix: `[subagent]`, `[subagent:isolated]`, `[iterative]`, `[collaborative]`
+4. Group into three dispatch queues: subagent_tasks, iterative_tasks, collaborative_tasks
 5. Present a brief task summary table to the user showing task name, type, and dependencies
 6. Proceed directly. No isolation question. No "ready to provision" pause.
 
+Beads handles dependency resolution — `bd ready` only returns tasks whose blockers are all closed. No manual dependency tracking needed.
+
 ## Step 2: Subagent Dispatch (parallel)
 
-For each `[subagent]` task with no unresolved dependencies:
+For each `[subagent]` task returned by `bd ready`:
 
-1. Extract the ` ```agent-prompt ` block from the plan for that task
-2. Pass the extracted prompt verbatim to the `Agent` tool with `run_in_background: true`
+1. Mark the task in progress:
+
+```bash
+bd update {task-id} --status in-progress
+```
+
+2. Extract the agent prompt from the issue description:
+
+```bash
+bd show {task-id} --json
+```
+
+The `description` field contains the complete agent prompt written by `/dp-cto:start`. Pass it verbatim to the `Agent` tool with `run_in_background: true`.
+
 3. For `[subagent:isolated]` tasks, add `isolation: "worktree"` to the Agent call
 
 Batch in rounds of 3-4 (preserve anti-pattern rule).
 
-The agent prompt is pre-built in the plan. Do NOT modify it — pass it verbatim.
+The agent prompt is pre-built in the beads issue description. Do NOT modify it — pass it verbatim.
 
-CTO is auto-notified when background agents complete. Dependent subagent tasks dispatch after their dependencies complete.
+CTO is auto-notified when background agents complete. After each agent completes, mark it done:
+
+```bash
+bd close {task-id}
+```
+
+Then re-query `bd ready --json` to discover newly unblocked tasks and dispatch the next round.
 
 While waiting for background agents, CTO can proceed to dispatch iterative tasks (Step 3).
 
@@ -57,7 +87,13 @@ While waiting for background agents, CTO can proceed to dispatch iterative tasks
 
 Skip this step if no `[iterative]` tasks exist. Most well-planned tasks should be `[subagent]`.
 
-For each `[iterative]` task, extract the ` ```agent-prompt ` block from the plan and dispatch as a `[subagent]` task first (same as Step 2 — pass the prompt verbatim). If it fails the quality gate after 2 fix rounds in Step 5, report the failure to the user and suggest they invoke `/dp-cto:ralph` manually.
+For each `[iterative]` task:
+
+1. Mark in progress: `bd update {task-id} --status in-progress`
+2. Extract the agent prompt from `bd show {task-id} --json` (the `description` field)
+3. Dispatch as a `[subagent]` task first (same as Step 2 — pass the prompt verbatim)
+
+If it fails the quality gate after 2 fix rounds in Step 5, mark it done with `bd close {task-id}`, report the failure to the user, and suggest they invoke `/dp-cto:ralph` manually.
 
 Ralph is an opt-in tool for tasks that genuinely need multiple iteration cycles. Do NOT auto-dispatch to ralph — let the user decide.
 
@@ -69,16 +105,17 @@ Skip this entire step if there are no `[collaborative]` tasks in the plan.
 2. For each collaborative task: `TaskCreate` with description, file scope, acceptance criteria
 3. Set `addBlockedBy` for sequential dependencies
 4. Spawn teammates via `Agent` tool with `team_name` parameter
-5. Extract the ` ```agent-prompt ` block from the plan for each teammate — pass it verbatim
+5. Extract the agent prompt from `bd show {task-id} --json` (the `description` field) for each teammate — pass it verbatim
 6. Monitor via `TaskList`, steer via `SendMessage`
 7. Ask teammates to cross-review each other's work
 8. When all collaborative tasks complete: shut down teammates via `SendMessage({ type: "shutdown_request" })`, then `TeamDelete()`
+9. Mark each completed collaborative task done: `bd close {task-id}`
 
 ## Step 5: Two-Stage Review
 
 For each completed task (from any dispatch type), run a two-stage review:
 
-**Stage 1 — Spec compliance** via `superpowers:requesting-code-review`:
+**Stage 1 — Spec compliance** via `dp-cto:review`:
 
 - Does the implementation match the task spec?
 - Are all acceptance criteria met?
@@ -115,7 +152,7 @@ This checkpoint prevents losing reviewed work if a later task or the session its
 Say **"Ready to integrate."** then PAUSE for user confirmation.
 
 - Run full test suite after all tasks complete
-- If tests fail, use `superpowers:systematic-debugging` to identify the root cause
+- If tests fail, use `dp-cto:debug` to identify the root cause
 - Delegate the fix to a subagent — do not fix yourself
 - Worktree integration is handled automatically by the `isolation: "worktree"` parameter — no manual merge choreography needed
 

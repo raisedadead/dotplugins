@@ -1,5 +1,5 @@
 import { describe, test, expect, beforeAll } from "vitest";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -10,6 +10,7 @@ const MARKETPLACE_JSON = join(REPO_ROOT, ".claude-plugin", "marketplace.json");
 const PLUGIN_JSON = join(REPO_ROOT, "plugins", "dp-cto", ".claude-plugin", "plugin.json");
 const HOOKS_JSON = join(REPO_ROOT, "plugins", "dp-cto", "hooks", "hooks.json");
 const PLUGIN_ROOT = join(REPO_ROOT, "plugins", "dp-cto");
+const SKILLS_ROOT = join(PLUGIN_ROOT, "skills");
 const SNAPSHOT_DIR = join(__dirname, "snapshots");
 
 const VALID_EVENTS = [
@@ -146,6 +147,60 @@ describe("hooks.json", () => {
         }
       }
     }
+  });
+});
+
+// ─── Skill Frontmatter Validation ────────────────────────────────────────────
+
+const EXPECTED_SKILLS = [
+  "start",
+  "execute",
+  "ralph",
+  "ralph-cancel",
+  "polish",
+  "verify",
+  "tdd",
+  "debug",
+  "verify-done",
+  "review",
+  "sweep",
+];
+
+describe("Skill frontmatter", () => {
+  let skillDirs: string[];
+
+  beforeAll(async () => {
+    const entries = await readdir(SKILLS_ROOT, { withFileTypes: true });
+    skillDirs = entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  });
+
+  test("all expected skills have directories", () => {
+    for (const skill of EXPECTED_SKILLS) {
+      expect(skillDirs, `missing skill directory: ${skill}`).toContain(skill);
+    }
+  });
+
+  test("no unexpected skill directories", () => {
+    for (const dir of skillDirs) {
+      expect(EXPECTED_SKILLS, `unexpected skill directory: ${dir}`).toContain(dir);
+    }
+  });
+
+  test.each(EXPECTED_SKILLS)("%s/SKILL.md exists with valid YAML frontmatter", async (skill) => {
+    const skillMd = join(SKILLS_ROOT, skill, "SKILL.md");
+    expect(existsSync(skillMd), `${skill}/SKILL.md should exist`).toBe(true);
+
+    const content = await readFile(skillMd, "utf-8");
+    const lines = content.split("\n");
+    expect(lines[0]).toBe("---");
+
+    const closingIdx = lines.indexOf("---", 1);
+    expect(closingIdx, "frontmatter should have closing ---").toBeGreaterThan(0);
+
+    const frontmatter = lines.slice(1, closingIdx).join("\n");
+    const nameMatch = frontmatter.match(/^name:\s*"?([^"\n]+)"?/m);
+    expect(nameMatch, `${skill}/SKILL.md should have a name field`).not.toBeNull();
+    expect(nameMatch![1].trim()).toBe(skill);
   });
 });
 
