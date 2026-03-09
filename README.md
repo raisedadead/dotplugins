@@ -97,23 +97,74 @@ Task scheduling uses beads dependency graphs (`bd ready --json`) to discover wha
 Hooks act as defense-in-depth guardrails. They don't block — they catch failure modes early:
 
 ```
-SessionStart ──→ inject context, prime beads, detect recovery
-PreToolUse   ──→ stage enforcement, skill filtering (3-tier: deny/warn/pass)
-PostToolUse  ──→ research validation, stage transitions, completion gate
-SessionEnd   ──→ preserve state for next-session recovery
-```
+  ┌─ SessionStart ──────────────────────────────────────────────────────┐
+  │  Inject enforcement context, prime beads, detect session recovery   │
+  └─────────────────────────────────────────────────────────────────────┘
 
-The completion gate detects agent claims like "all tests pass" without test runner output. The research validator injects verification checklists after every web search and MCP call. Neither blocks — they inject advisory context.
+  ┌─ PreToolUse (on Skill calls) ───────────────────────────────────────┐
+  │                                                                     │
+  │   Skill invoked                                                     │
+  │       │                                                             │
+  │       ├── dp-cto skill? ──> Stage valid? ──yes──> ALLOW             │
+  │       │                          │                                  │
+  │       │                         no ──> DENY (with reason)           │
+  │       │                                                             │
+  │       └── other skill? ──> Tiered filtering:                        │
+  │               Tier 1 DENY  — superpowers skills ──> block           │
+  │               Tier 2 WARN  — orchestration-adjacent ──> allow+warn  │
+  │               Tier 3 PASS  — everything else ──> allow              │
+  │                                                                     │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─ PostToolUse ───────────────────────────────────────────────────────┐
+  │  After WebSearch / WebFetch / MCP  ──>  verification checklist      │
+  │  After dp-cto Skill completion     ──>  advance stage machine       │
+  │  After Agent completion            ──>  completion claim gate       │
+  └─────────────────────────────────────────────────────────────────────┘
+
+  ┌─ SessionEnd ────────────────────────────────────────────────────────┐
+  │  Preserve stage files for next-session recovery                     │
+  └─────────────────────────────────────────────────────────────────────┘
+```
 
 ### Stage Machine
 
 Strict state transitions prevent out-of-order skill invocations:
 
 ```
-idle → planning → planned → executing → polishing → complete → idle
-```
+  ┌──────────┐
+  │   idle   │
+  └────┬─────┘
+       │ /start
+       v
+  ┌──────────┐
+  │ planning │
+  └────┬─────┘
+       │ plan written
+       v
+  ┌──────────┐ <── /start (revise)
+  │ planned  │
+  └────┬─────┘
+       │ /execute
+       v
+  ┌──────────────────────────┐
+  │        executing         │
+  │  (/ralph, /verify ok)    │
+  └────────────┬─────────────┘
+               │ auto-chain
+               v
+  ┌──────────────────────────┐
+  │        polishing         │
+  └────────────┬─────────────┘
+               │ /polish done
+               v
+  ┌──────────────────────────┐
+  │        complete          │──── /start (new cycle)
+  └──────────────────────────┘
 
-Quality skills (tdd, debug, verify-done, review, sweep) are side-effect-free — they bypass the stage machine entirely.
+  Quality skills bypass the stage machine entirely.
+  /ralph-cancel is always allowed.
+```
 
 ### Fresh Context Architecture
 
