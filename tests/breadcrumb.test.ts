@@ -117,18 +117,6 @@ describe("write_stage", () => {
   });
 });
 
-describe("cleanup_stage", () => {
-  test("removes stage file after write_stage", async () => {
-    await runShell(`source "${LIB_STAGE}" && write_stage "sess-1" "executing" "/p.md"`);
-    const { existsSync } = await import("node:fs");
-    const file = join(tmpDir, ".claude", "dp-cto", "sess-1.stage.json");
-    expect(existsSync(file)).toBe(true);
-
-    await runShell(`source "${LIB_STAGE}" && cleanup_stage "sess-1"`);
-    expect(existsSync(file)).toBe(false);
-  });
-});
-
 describe("clear_breadcrumb", () => {
   test("removes active.json", async () => {
     await runShell(`source "${LIB_STAGE}" && write_breadcrumb "sess-1" "executing" "/p.md" "/cwd"`);

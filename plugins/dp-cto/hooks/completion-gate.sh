@@ -24,50 +24,33 @@ if [ -z "$RESPONSE" ]; then
   exit 0
 fi
 
-RESPONSE_LOWER=$(echo "$RESPONSE" | tr '[:upper:]' '[:lower:]')
+RESPONSE_LOWER="${RESPONSE,,}"
 
 HAS_CLAIM=false
-for pattern in \
-  "all tests pass" \
-  "tests pass" \
-  "implementation complete" \
-  "implementation is complete" \
-  "task complete" \
-  "task is complete" \
-  "all done" \
-  "completed successfully" \
-  "changes are complete" \
-  "work is done" \
-  "work is complete"; do
-  if echo "$RESPONSE_LOWER" | grep -qF "$pattern"; then
-    HAS_CLAIM=true
-    break
-  fi
-done
+if echo "$RESPONSE_LOWER" | grep -qF \
+  -e "all tests pass" \
+  -e "tests pass" \
+  -e "implementation complete" \
+  -e "implementation is complete" \
+  -e "task complete" \
+  -e "task is complete" \
+  -e "all done" \
+  -e "completed successfully" \
+  -e "changes are complete" \
+  -e "work is done" \
+  -e "work is complete"; then
+  HAS_CLAIM=true
+fi
 
 if [ "$HAS_CLAIM" = "false" ]; then
   exit 0
 fi
 
 HAS_EVIDENCE=false
-for evidence in \
-  "tests? \\(passed\\|failed\\)" \
-  "[0-9]\\+ passed" \
-  "[0-9]\\+ failed" \
-  "exit code" \
-  "test suites\\?" \
-  "✓\\|✗\\|✘" \
-  "pass |fail " \
-  "ok [0-9]" \
-  "not ok [0-9]" \
-  "assert" \
-  "expect(" \
-  "vitest\\|jest\\|mocha\\|pytest\\|cargo test\\|go test\\|npm test\\|pnpm test"; do
-  if echo "$RESPONSE_LOWER" | grep -qi "$evidence"; then
-    HAS_EVIDENCE=true
-    break
-  fi
-done
+if echo "$RESPONSE_LOWER" | grep -qEi \
+  'tests? (passed|failed)|[0-9]+ passed|[0-9]+ failed|exit code|test suites?|[✓✗✘]|pass |fail |ok [0-9]|not ok [0-9]|assert|expect\(|vitest|jest|mocha|pytest|cargo test|go test|npm test|pnpm test'; then
+  HAS_EVIDENCE=true
+fi
 
 if [ "$HAS_EVIDENCE" = "true" ]; then
   exit 0

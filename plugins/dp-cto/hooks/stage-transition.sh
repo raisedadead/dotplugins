@@ -10,21 +10,18 @@ fi
 
 INPUT=$(cat)
 
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+read -r TOOL_NAME SKILL_NAME SESSION_ID CWD_INPUT < <(
+  echo "$INPUT" | jq -r '[.tool_name // "", .tool_input.skill // "", .session_id // "", .cwd // ""] | @tsv'
+)
 
 if [ "$TOOL_NAME" != "Skill" ]; then
   exit 0
 fi
 
-SKILL_NAME=$(echo "$INPUT" | jq -r '.tool_input.skill // empty')
-
 case "$SKILL_NAME" in
   dp-cto:*) ;;
   *) exit 0 ;;
 esac
-
-SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
-CWD_INPUT=$(echo "$INPUT" | jq -r '.cwd // empty')
 
 if [ -z "$SESSION_ID" ]; then
   exit 0
@@ -37,6 +34,9 @@ SKILL="${SKILL_NAME#dp-cto:}"
 
 case "$SKILL" in
   start)
+    # Plan-path extraction kept for backward compatibility with pre-v3.0
+    # markdown-based plans. In v3.0+ workflows (beads), the grep below finds
+    # nothing and PLAN_PATH stays empty — which is the expected path.
     PLAN_PATH=""
     INDEX_FILE="$CWD/.claude/plans/_index.md"
     if [ -f "$INDEX_FILE" ]; then
@@ -47,6 +47,9 @@ case "$SKILL" in
       case "$PLAN_PATH" in
         .claude/plans/*) ;; # OK
         *) PLAN_PATH="" ;;  # reject unexpected paths
+      esac
+      case "$PLAN_PATH" in
+        *..* ) PLAN_PATH="" ;; # reject path traversal
       esac
     fi
     write_stage "$SESSION_ID" "planned" "$PLAN_PATH"

@@ -1,6 +1,6 @@
 ---
 name: execute
-description: "Execute an implementation plan using adaptive dispatch (subagents, iterative loops, or collaborative teams). Requires a plan from /dp-cto:start."
+description: "Execute an implementation plan using adaptive dispatch (primarily subagents; iterative loops and collaborative teams where needed). Requires a plan from /dp-cto:start."
 ---
 
 <EXTREMELY_IMPORTANT>
@@ -159,9 +159,7 @@ Say **"Ready to integrate."** then PAUSE for user confirmation.
 ## Step 7: Cleanup and Handoff
 
 1. If Step 4 ran (collaborative tasks), verify the team was cleaned up
-2. Say **"Implementation complete. Run `/dp-cto:polish` in a fresh session for multi-perspective review."**
-
-Do NOT invoke `/dp-cto:polish` yourself. The polish phase runs in a separate session to avoid context window exhaustion from the execute phase. The user starts it.
+2. Auto-chain into `/dp-cto:polish` for multi-perspective review. The stage machine transitions from `executing` to `polishing` automatically.
 
 ## NEVER
 

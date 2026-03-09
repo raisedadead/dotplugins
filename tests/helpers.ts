@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { mkdir, writeFile, readFile, rm, mkdtemp } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -108,6 +109,30 @@ export async function getPlanPath(tmpDir: string, sessionId: string): Promise<st
   }
 }
 
+export async function getFullStage(
+  tmpDir: string,
+  sessionId: string,
+): Promise<Record<string, unknown> | null> {
+  try {
+    const raw = await readFile(
+      join(tmpDir, ".claude", "dp-cto", `${sessionId}.stage.json`),
+      "utf-8",
+    );
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+export async function listStageDir(tmpDir: string): Promise<string[]> {
+  const { readdir } = await import("node:fs/promises");
+  try {
+    return await readdir(join(tmpDir, ".claude", "dp-cto"));
+  } catch {
+    return [];
+  }
+}
+
 export async function getBreadcrumb(tmpDir: string): Promise<string> {
   try {
     const raw = await readFile(join(tmpDir, ".claude", "dp-cto", "active.json"), "utf-8");
@@ -119,7 +144,6 @@ export async function getBreadcrumb(tmpDir: string): Promise<string> {
 }
 
 export async function breadcrumbExists(tmpDir: string): Promise<boolean> {
-  const { existsSync } = await import("node:fs");
   return existsSync(join(tmpDir, ".claude", "dp-cto", "active.json"));
 }
 

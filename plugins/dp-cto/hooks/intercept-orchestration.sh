@@ -8,14 +8,14 @@ fi
 
 INPUT=$(cat)
 
-TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // empty')
+read -r TOOL_NAME SKILL_NAME SESSION_ID CWD_INPUT < <(
+  echo "$INPUT" | jq -r '[.tool_name // "", .tool_input.skill // "", .session_id // "", .cwd // ""] | @tsv'
+)
 
 # Only inspect Skill tool calls
 if [ "$TOOL_NAME" != "Skill" ]; then
   exit 0
 fi
-
-SKILL_NAME=$(echo "$INPUT" | jq -r '.tool_input.skill // empty')
 
 # Stage enforcement for dp-cto skills
 # shellcheck source=lib-stage.sh
@@ -23,8 +23,7 @@ source "$(dirname "$0")/lib-stage.sh"
 
 case "$SKILL_NAME" in
   dp-cto:*)
-    SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
-    CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+    CWD="$CWD_INPUT"
     if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
       exit 0
     fi
@@ -52,7 +51,6 @@ case "$SKILL_NAME" in
     CURRENT_STAGE=$(read_stage "$SESSION_ID")
 
     ALLOWED=false
-    REASON=""
 
     case "$CURRENT_STAGE" in
       idle)
@@ -68,14 +66,12 @@ case "$SKILL_NAME" in
       planned)
         case "$SKILL" in
           execute|start) ALLOWED=true ;;
-          ralph|verify) REASON="Run /dp-cto:execute first to begin implementation." ;;
           *) REASON="Run /dp-cto:execute first to begin implementation." ;;
         esac
         ;;
       executing)
         case "$SKILL" in
           ralph|verify|polish) ALLOWED=true ;;
-          start|execute) REASON="Implementation in progress. Complete execution first, or use /dp-cto:ralph-cancel to abort." ;;
           *) REASON="Implementation in progress. Complete execution first, or use /dp-cto:ralph-cancel to abort." ;;
         esac
         ;;
@@ -88,7 +84,6 @@ case "$SKILL_NAME" in
       complete)
         case "$SKILL" in
           start|polish) ALLOWED=true ;;
-          execute|ralph|verify) REASON="Cycle is complete. Run /dp-cto:start to begin a new feature." ;;
           *) REASON="Cycle is complete. Run /dp-cto:start to begin a new feature." ;;
         esac
         ;;
@@ -134,7 +129,7 @@ case "$BARE_SKILL" in
     ;;
 esac
 
-# Tier 3: WARN — unknown skills with orchestration-adjacent names
+# Tier 2: WARN — unknown skills with orchestration-adjacent names
 case "$BARE_SKILL" in
   *parallel*|*dispatch*|*orchestrat*|*worktree*|*subagent*)
     jq -n --arg skill "$SKILL_NAME" \
@@ -143,5 +138,5 @@ case "$BARE_SKILL" in
     ;;
 esac
 
-# Tier 4: PASS silently — everything else
+# Tier 3: PASS silently — everything else
 exit 0

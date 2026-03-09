@@ -53,14 +53,16 @@ write_stage() {
   mkdir -p "$dir"
   chmod 700 "$dir"
 
-  local started_at
-  local history
+  local started_at=""
+  local history=""
+  local plan_path_existing=""
 
   if [ -f "$file" ]; then
-    started_at=$(jq -r '.started_at // empty' "$file" 2>/dev/null) || true
-    history=$(jq -c '.history // []' "$file" 2>/dev/null) || true
+    read -r started_at history plan_path_existing < <(
+      jq -r '[.started_at // "", (.history // [] | tojson), .plan_path // ""] | @tsv' "$file" 2>/dev/null
+    ) || true
     if [ -z "$plan_path" ]; then
-      plan_path=$(jq -r '.plan_path // empty' "$file" 2>/dev/null) || true
+      plan_path="$plan_path_existing"
     fi
   fi
 
@@ -89,13 +91,6 @@ write_stage() {
   fi
 
   mv -f "$tmpfile" "$file"
-}
-
-cleanup_stage() {
-  local session_id="$1"
-  local file
-  file="$(stage_file "$session_id")"
-  rm -f "$file"
 }
 
 breadcrumb_file() {

@@ -15,8 +15,7 @@ fi
 
 INPUT=$(cat)
 
-SESSION_ID=$(echo "$INPUT" | jq -r '.session_id // empty')
-CWD=$(echo "$INPUT" | jq -r '.cwd // empty')
+read -r SESSION_ID CWD < <(echo "$INPUT" | jq -r '[.session_id // "", .cwd // ""] | @tsv') || true
 if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
   exit 0
 fi
@@ -46,9 +45,13 @@ recover_from_breadcrumb() {
   fi
 
   local bc_stage bc_plan_path bc_session_id
-  bc_stage=$(echo "$bc" | jq -r '.stage // empty') || return 1
-  bc_plan_path=$(echo "$bc" | jq -r '.plan_path // empty') || return 1
-  bc_session_id=$(echo "$bc" | jq -r '.session_id // empty') || return 1
+  read -r bc_stage bc_plan_path bc_session_id < <(
+    echo "$bc" | jq -r '[.stage // "", .plan_path // "", .session_id // ""] | @tsv'
+  ) || return 1
+
+  bc_stage=$(printf '%s' "$bc_stage" | tr -d '\n<>')
+  bc_plan_path=$(printf '%s' "$bc_plan_path" | tr -d '\n<>')
+  bc_session_id=$(printf '%s' "$bc_session_id" | tr -d '\n<>')
 
   if ! is_non_terminal "$bc_stage"; then
     return 1
@@ -84,14 +87,11 @@ recover_from_scan() {
     fi
 
     local s ts pp
-    s=$(jq -r '.stage // empty' "$f" 2>/dev/null) || continue
+    read -r s ts pp < <(jq -r '[.stage // "", .started_at // "", .plan_path // ""] | @tsv' "$f" 2>/dev/null) || continue
 
     if ! is_non_terminal "$s"; then
       continue
     fi
-
-    ts=$(jq -r '.started_at // empty' "$f" 2>/dev/null) || continue
-    pp=$(jq -r '.plan_path // empty' "$f" 2>/dev/null) || true
 
     if [ -z "$latest_ts" ] || [[ "$ts" > "$latest_ts" ]]; then
       latest_file="$f"
@@ -123,6 +123,9 @@ if command -v bd &>/dev/null && [ -d "${CWD}/.beads" ]; then
   BD_EXIT=$?
   set -e
   if [ $BD_EXIT -eq 0 ] && [ -n "$BD_OUTPUT" ]; then
+    BD_OUTPUT="${BD_OUTPUT//<EXTREMELY_IMPORTANT>/}"
+    BD_OUTPUT="${BD_OUTPUT//<\/EXTREMELY_IMPORTANT>/}"
+    BD_OUTPUT="${BD_OUTPUT:0:4096}"
     BEADS_CONTEXT="$BD_OUTPUT"
   fi
 fi
@@ -156,7 +159,7 @@ dp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requ
 - /dp-cto:ralph — subagent-based autonomous iterative loop with fresh context per iteration. Args: PROMPT [--max-iterations N] [--completion-promise TEXT] [--quality-gate CMD].
 - /dp-cto:ralph-cancel — cancel an active ralph loop.
 - /dp-cto:verify — manual deep-validation of research findings.
-- /dp-cto:sweep — codebase-wide lint, format, and cleanup pass.
+- /dp-cto:sweep — entropy management and pattern drift detection across dead code, inconsistent patterns, stale comments, and naming violations.
 
 dp-cto quality skills (native, no superpowers needed): dp-cto:tdd, dp-cto:debug, dp-cto:verify-done, dp-cto:review, dp-cto:sweep.
 

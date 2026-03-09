@@ -81,6 +81,8 @@ describe("Beads availability detection (session-start.sh)", () => {
 
 // ─── bd ready JSON Output Parsing ───────────────────────────────────────────
 
+// These tests validate jq parsing patterns used by dp-cto hooks.
+// They test jq expressions in isolation, not through the actual hooks.
 describe("bd ready JSON output parsing", () => {
   const SAMPLE_BD_READY = {
     tasks: [
@@ -113,6 +115,7 @@ describe("bd ready JSON output parsing", () => {
 
   test("extracts task IDs from bd ready output", async () => {
     const output = JSON.stringify(SAMPLE_BD_READY);
+    // Shell interpolation is safe here: output is a hardcoded constant, not user input.
     const r = await runShell(`echo '${output}' | jq -r '.tasks[].id'`);
     expect(r.exitCode).toBe(0);
     const ids = r.stdout.split("\n");

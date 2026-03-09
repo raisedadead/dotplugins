@@ -5,6 +5,8 @@ import {
   seedCorruptStage,
   getStage,
   getPlanPath,
+  getFullStage,
+  listStageDir,
   seedIndex,
   createTmpDir,
   removeTmpDir,
@@ -13,6 +15,9 @@ import {
   seedBreadcrumb,
 } from "./helpers";
 
+// WARNING: Tests that exercise stage-writing paths MUST pass `cwd: tmpDir` and
+// a `session_id` to runHook. Without cwd the hook cannot locate the stage
+// directory and state assertions will fail silently.
 let tmpDir: string;
 
 beforeEach(async () => {
@@ -76,15 +81,24 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     beforeEach(() => seedStage(tmpDir, "test-session", "planning"));
 
     test("start is denied (in progress)", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:start")), /wait/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:start")),
+        /Wait for \/dp-cto:start to complete/,
+      );
     });
 
     test("execute is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /wait/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:execute")),
+        /Wait for \/dp-cto:start to complete/,
+      );
     });
 
     test("ralph is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /wait/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:ralph")),
+        /Wait for \/dp-cto:start to complete/,
+      );
     });
 
     test("ralph-cancel is allowed (safety valve)", async () => {
@@ -104,15 +118,15 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     });
 
     test("ralph is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /execute/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /Run \/dp-cto:execute first/);
     });
 
     test("polish is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:polish")), /execute/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:polish")), /Run \/dp-cto:execute first/);
     });
 
     test("verify is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /execute/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /Run \/dp-cto:execute first/);
     });
   });
 
@@ -132,11 +146,11 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     });
 
     test("start is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:start")), /progress/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:start")), /Implementation in progress/);
     });
 
     test("execute is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /progress/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /Implementation in progress/);
     });
   });
 
@@ -148,15 +162,24 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     });
 
     test("start is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:start")), /polish/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:start")),
+        /Polish in progress.*Wait for \/dp-cto:polish to complete/,
+      );
     });
 
     test("execute is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /polish/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:execute")),
+        /Polish in progress.*Wait for \/dp-cto:polish to complete/,
+      );
     });
 
     test("ralph is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /polish/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:ralph")),
+        /Polish in progress.*Wait for \/dp-cto:polish to complete/,
+      );
     });
 
     test("ralph-cancel is allowed (safety valve)", async () => {
@@ -176,20 +199,29 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     });
 
     test("execute is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /start/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:execute")),
+        /Run \/dp-cto:start to begin a new feature/,
+      );
     });
 
     test("ralph is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /start/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:ralph")),
+        /Run \/dp-cto:start to begin a new feature/,
+      );
     });
 
     test("verify is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /start/i);
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:verify")),
+        /Run \/dp-cto:start to begin a new feature/,
+      );
     });
   });
 
   describe("ralph-cancel safety valve", () => {
-    test.each(["idle", "planning", "executing", "polishing", "complete"])(
+    test.each(["idle", "planning", "planned", "executing", "polishing", "complete"])(
       "allowed from %s",
       async (stage) => {
         await seedStage(tmpDir, "test-session", stage);
@@ -225,6 +257,15 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       );
     });
 
+    test("start preserves existing plan_path during pre-execution write", async () => {
+      await seedStage(tmpDir, "test-session", "complete", ".claude/plans/old/02-implementation.md");
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+      expect(await getStage(tmpDir, "test-session")).toBe("planning");
+      expect(await getPlanPath(tmpDir, "test-session")).toBe(
+        ".claude/plans/old/02-implementation.md",
+      );
+    });
+
     test("polish preserves existing plan_path", async () => {
       await seedStage(
         tmpDir,
@@ -248,6 +289,7 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
     const r = await runHook(HOOK, { tool_name: "Bash" });
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe("");
+    expect(r.json).toBeNull();
   });
 
   describe("Tier 1: deny orchestration skills", () => {
@@ -268,7 +310,7 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
     });
   });
 
-  describe("Tier 2: deny quality/meta skills (v3.0 — all superpowers blocked)", () => {
+  describe("Tier 1: deny quality/meta superpowers skills", () => {
     test.each([
       "superpowers:test-driven-development",
       "superpowers:requesting-code-review",
@@ -293,18 +335,42 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
       "dp-cto:verify-done",
       "dp-cto:review",
       "dp-cto:sweep",
-    ])("%s is allowed", async (skill) => {
+    ])("%s is allowed from idle", async (skill) => {
       expectAllowed(await runHook(HOOK, skillInput(skill)));
+    });
+
+    test.each(["planning", "planned", "executing", "polishing", "complete"])(
+      "quality skills pass from %s stage",
+      async (stage) => {
+        await seedStage(tmpDir, "test-session", stage);
+        for (const skill of [
+          "dp-cto:tdd",
+          "dp-cto:debug",
+          "dp-cto:verify-done",
+          "dp-cto:review",
+          "dp-cto:sweep",
+        ]) {
+          expectAllowed(await runHook(HOOK, skillInput(skill)));
+        }
+      },
+    );
+  });
+
+  describe("Tier 2: warn for orchestration-adjacent unknown skills", () => {
+    test.each([
+      "superpowers:parallel-something",
+      "superpowers:dispatch-tasks",
+      "superpowers:orchestration-layer",
+      "superpowers:worktree-manager",
+      "superpowers:subagent-pool",
+    ])("%s emits warning", async (skill) => {
+      const r = await runHook(HOOK, skillInput(skill));
+      expect(r.exitCode).toBe(0);
+      expect(r.stdout).toMatch(/WARNING/);
     });
   });
 
-  test("Tier 3: warn for orchestration-adjacent unknown skill", async () => {
-    const r = await runHook(HOOK, skillInput("superpowers:parallel-something"));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toMatch(/WARNING/);
-  });
-
-  test("Tier 4: non-superpowers skill passes silently", async () => {
+  test("Tier 3: non-superpowers skill passes silently", async () => {
     expectAllowed(await runHook(HOOK, skillInput("some-other-skill")));
   });
 });
@@ -378,7 +444,7 @@ describe("Breadcrumb Tracking (stage-transition.sh)", () => {
     expect(breadcrumb.cwd).toBe(tmpDir);
   });
 
-  test("execute updates active.json to executing and preserves plan_path", async () => {
+  test("execute updates active.json to polishing and preserves plan_path", async () => {
     await seedStage(tmpDir, "test-session", "executing");
     await seedIndex(tmpDir, "tui/02-implementation.md");
     await runHook(hook, skillInput("dp-cto:start"));
@@ -418,13 +484,15 @@ describe("Edge Cases", () => {
     expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
   });
 
-  test("missing session_id does not crash", async () => {
+  test("missing session_id does not crash and creates no side-effect files", async () => {
     const r = await runHook(HOOK, {
       tool_name: "Skill",
       tool_input: { skill: "dp-cto:start" },
       cwd: tmpDir,
     });
     expect(r.exitCode).toBe(0);
+    const files = await listStageDir(tmpDir);
+    expect(files).toEqual([]);
   });
 
   test("unknown stage value treated as idle — start allowed", async () => {
@@ -597,6 +665,22 @@ describe("SessionEnd (session-cleanup.sh)", () => {
     expect(await getStage(tmpDir, "test-session")).toBe("ended");
   });
 
+  test("preserves plan_path and history through ended transition", async () => {
+    await seedStage(tmpDir, "test-session", "executing", ".claude/plans/feat/02-implementation.md");
+    const r = await runHook(CLEANUP_HOOK, {
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+    const full = await getFullStage(tmpDir, "test-session");
+    expect(full).not.toBeNull();
+    expect(full!.stage).toBe("ended");
+    expect(full!.plan_path).toBe(".claude/plans/feat/02-implementation.md");
+    const history = full!.history as string[];
+    expect(history).toContain("executing");
+    expect(history).toContain("ended");
+  });
+
   test("no-ops without pre-existing stage file", async () => {
     const r = await runHook(CLEANUP_HOOK, {
       session_id: "test-session",
@@ -700,22 +784,34 @@ describe("Completion Gate (completion-gate.sh)", () => {
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe("");
   });
+
+  test("ALL-CAPS claim phrase triggers warning (case folding)", async () => {
+    const r = await runHook(GATE_HOOK, agentInput("IMPLEMENTATION COMPLETE. Looks good."));
+    expect(r.exitCode).toBe(0);
+    expect(r.json).not.toBeNull();
+    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+      ?.additionalContext as string;
+    expect(ctx).toMatch(/verify/i);
+  });
 });
 
 // ─── Research Validator ──────────────────────────────────────────────────────
 
 describe("Research Validator (research-validator.sh)", () => {
-  test("exits 0 and produces valid JSON with RESEARCH VALIDATION context", async () => {
-    const r = await runHook("research-validator.sh", {
-      tool_name: "WebSearch",
-      tool_input: { query: "test" },
-    });
-    expect(r.exitCode).toBe(0);
-    expect(r.json).not.toBeNull();
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
-    expect(ctx).toMatch(/RESEARCH VALIDATION/);
-  });
+  test.each(["WebSearch", "WebFetch", "mcp__some_tool"])(
+    "fires for %s and produces RESEARCH VALIDATION context",
+    async (toolName) => {
+      const r = await runHook("research-validator.sh", {
+        tool_name: toolName,
+        tool_input: { query: "test" },
+      });
+      expect(r.exitCode).toBe(0);
+      expect(r.json).not.toBeNull();
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx).toMatch(/RESEARCH VALIDATION/);
+    },
+  );
 });
 
 // ─── Breadcrumb Tracking: execute with missing breadcrumb ────────────────────

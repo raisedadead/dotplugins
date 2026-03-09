@@ -60,7 +60,7 @@ describe("marketplace.json", () => {
   test("each plugin has name and source", () => {
     for (const plugin of data.plugins as Record<string, unknown>[]) {
       expect(plugin.name).toBeTypeOf("string");
-      expect(["string", "object"]).toContain(typeof plugin.source);
+      expect(plugin.source).toBeTypeOf("string");
     }
   });
 
@@ -89,6 +89,23 @@ describe("plugin.json", () => {
     if ("author" in data) expect(data.author).toBeTypeOf("object");
     if ("repository" in data) expect(data.repository).toBeTypeOf("string");
     if ("keywords" in data) expect(data.keywords).toBeInstanceOf(Array);
+  });
+});
+
+// ─── Version Sync ───────────────────────────────────────────────────────────
+
+describe("Version sync", () => {
+  test("marketplace.json metadata, marketplace.json plugins array, and plugin.json versions match", async () => {
+    const marketplace = JSON.parse(await readFile(MARKETPLACE_JSON, "utf-8"));
+    const plugin = JSON.parse(await readFile(PLUGIN_JSON, "utf-8"));
+
+    const metadataVersion = (marketplace.metadata as Record<string, unknown>).version;
+    const pluginsArrayVersion = (marketplace.plugins as Record<string, unknown>[])[0].version;
+    const pluginJsonVersion = plugin.version;
+
+    expect(metadataVersion).toBeTypeOf("string");
+    expect(pluginsArrayVersion).toBe(metadataVersion);
+    expect(pluginJsonVersion).toBe(metadataVersion);
   });
 });
 
@@ -227,6 +244,8 @@ describe("Schema snapshots", () => {
       }
 
       const local = await readFile(join(SNAPSHOT_DIR, "marketplace.schema.json"), "utf-8");
+      // Intentionally informational-only: soft-fail so CI is not broken by
+      // upstream schema changes we haven't reviewed yet.
       if (live.trim() !== local.trim()) {
         console.warn(
           "WARNING: Local marketplace schema snapshot differs from live schema — review and update",
