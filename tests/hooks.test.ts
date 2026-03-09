@@ -268,7 +268,7 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
     });
   });
 
-  describe("Tier 2: pass quality skills", () => {
+  describe("Tier 2: deny quality/meta skills (v3.0 — all superpowers blocked)", () => {
     test.each([
       "superpowers:test-driven-development",
       "superpowers:requesting-code-review",
@@ -277,6 +277,22 @@ describe("Superpowers Interception (intercept-orchestration.sh)", () => {
       "superpowers:verification-before-completion",
       "superpowers:writing-skills",
       "superpowers:using-superpowers",
+    ])("%s is denied", async (skill) => {
+      const r = await runHook(HOOK, skillInput(skill));
+      expect(r.exitCode).toBe(0);
+      const hso = r.json?.hookSpecificOutput as Record<string, unknown>;
+      expect(hso?.permissionDecision).toBe("deny");
+      expect(hso?.permissionDecisionReason).toMatch(/Uninstall superpowers/);
+    });
+  });
+
+  describe("dp-cto quality skills pass through", () => {
+    test.each([
+      "dp-cto:tdd",
+      "dp-cto:debug",
+      "dp-cto:verify-done",
+      "dp-cto:review",
+      "dp-cto:sweep",
     ])("%s is allowed", async (skill) => {
       expectAllowed(await runHook(HOOK, skillInput(skill)));
     });

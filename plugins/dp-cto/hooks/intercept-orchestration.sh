@@ -42,6 +42,13 @@ case "$SKILL_NAME" in
       exit 0
     fi
 
+    # Quality skills — side-effect-free, no stage transition, pass silently
+    case "$SKILL" in
+      tdd|debug|verify-done|review|sweep)
+        exit 0
+        ;;
+    esac
+
     CURRENT_STAGE=$(read_stage "$SESSION_ID")
 
     ALLOWED=false
@@ -116,19 +123,13 @@ esac
 # Strip superpowers: prefix if present
 BARE_SKILL="${SKILL_NAME#superpowers:}"
 
-# Tier 1: DENY — orchestration skills replaced by dp-cto:start / dp-cto:execute
+# Tier 1: DENY — ALL superpowers skills (orchestration + quality + meta)
+# dp-cto v3.0 replaces all superpowers functionality natively
 # NOTE: This skill list must stay in sync with the enforcement message in session-start.sh
 case "$BARE_SKILL" in
-  executing-plans|dispatching-parallel-agents|subagent-driven-development|using-git-worktrees|finishing-a-development-branch|ralph-loop|brainstorming|writing-plans)
+  executing-plans|dispatching-parallel-agents|subagent-driven-development|using-git-worktrees|finishing-a-development-branch|ralph-loop|brainstorming|writing-plans|test-driven-development|requesting-code-review|receiving-code-review|systematic-debugging|verification-before-completion|writing-skills|using-superpowers)
     jq -n --arg skill "$SKILL_NAME" \
-      '{hookSpecificOutput: {permissionDecision: "deny", permissionDecisionReason: ("The skill " + $skill + " is intercepted by the dp-cto plugin. Use /dp-cto:start for brainstorming and planning, or /dp-cto:execute for implementation.")}}'
-    exit 0
-    ;;
-esac
-
-# Tier 2: PASS explicitly — known safe superpowers quality skills
-case "$BARE_SKILL" in
-  test-driven-development|requesting-code-review|receiving-code-review|systematic-debugging|verification-before-completion|writing-skills|using-superpowers)
+      '{hookSpecificOutput: {permissionDecision: "deny", permissionDecisionReason: ("The skill " + $skill + " is denied. dp-cto v3.0 replaces all superpowers skills. Use dp-cto equivalents. Uninstall superpowers to avoid conflicts.")}}'
     exit 0
     ;;
 esac

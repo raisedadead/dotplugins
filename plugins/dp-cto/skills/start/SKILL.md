@@ -123,81 +123,65 @@ Write `.claude/plans/<domain>/01-analysis.md`:
 [Items deferred during YAGNI check, or "None"]
 ```
 
-### 5c: Write Implementation Plan
+### 5c: Create Beads Molecule
 
-Write `.claude/plans/<domain>/02-implementation.md`:
+Create a beads epic and child tasks instead of a markdown implementation plan.
 
-```markdown
-# [Feature Name] — Implementation Plan
+**Create the epic:**
 
-> **For Claude:** Use /dp-cto:execute to implement this plan.
-
-**Goal:** [One sentence]
-**Architecture:** [2-3 sentences]
-**Tech Stack:** [Key technologies]
-
----
+```bash
+bd create "[Feature Name]" --type epic
 ```
 
-Then write task specs. Each task follows this structure:
+Record the returned epic ID (e.g., `EPIC-1`).
 
-````markdown
-### Task N: [Component Name] [subagent] or [iterative] or [collaborative]
+**Create child tasks** — one `bd create` per task:
 
-**Description:** What this task accomplishes.
-
-**Files:**
-
-- Create: `exact/path/to/file.ext`
-- Modify: `exact/path/to/existing.ext`
-- Test: `tests/exact/path/to/test.ext`
-
-**Acceptance Criteria:**
-
-- [ ] Criterion 1
-- [ ] Criterion 2
-- [ ] Tests pass: `<exact test command>`
-
-**Dependencies:** Task M (if any), or "None"
-
-```agent-prompt
-[Generated in Step 5d]
+```bash
+bd create "Task N: [Component Name]" --parent {epic-id} --type task
 ```
-````
 
-Rules for task specs:
+Record each returned task ID.
+
+**Add dependencies** between tasks where needed:
+
+```bash
+bd dep add {dependent-task-id} --blocks {blocking-task-id}
+```
+
+Rules for beads tasks:
 
 - Use **actual file paths** discovered in Step 1. Never use placeholders.
-- Tag each task with a dispatch type:
+- Tag each task title with a dispatch type suffix:
   - `[subagent]` (default): Independent, focused, report-back-and-done. Most tasks.
   - `[subagent:isolated]`: Like `[subagent]` but runs in a git worktree. Use for conflicting deps or parallel builds.
   - `[iterative]`: Needs quality gate, multiple attempts. "Fix until tests pass" type work.
   - `[collaborative]`: Needs inter-agent coordination, shared findings, cross-review. Rare — only when tasks must discuss findings with each other.
-- For `[iterative]` tasks, include the quality gate command in acceptance criteria.
+- For `[iterative]` tasks, include the quality gate command in the acceptance criteria.
 - Each task should be independently executable by a subagent with no conversation history.
-- Order tasks by dependency: independent tasks first, dependent tasks later.
+- Order dependencies so independent tasks are unblocked first, dependent tasks later.
 - Keep tasks focused: one concern per task. If a task touches more than 5 files, split it.
 
-### 5d: Generate Agent Prompts
+### 5d: Write Agent Prompts as Issue Descriptions
 
-For each task in the implementation plan, append an agent prompt block immediately after the task spec, fenced with ` ```agent-prompt `.
+For each task created in 5c, write the agent prompt as the issue description body using `bd edit {task-id} --body`. The execute skill will extract these prompts via `bd show {id} --json`.
 
-Each agent prompt follows this template:
+Each agent prompt follows this template (written as the issue description):
 
-```agent-prompt
+```
 You are implementing Task N: [Component Name].
 
 ## Your Task
 
-[Full task description from the task spec]
+[Full task description]
 
 ## Files
 
-[Exact file list from the task spec — Create/Modify/Test with full paths]
+[Exact file list — Create/Modify/Test with full paths]
 
 ## Acceptance Criteria
 
-[All acceptance criteria from the task spec]
+[All acceptance criteria including exact test commands]
 
 ## Context
 
@@ -206,10 +190,10 @@ You are implementing Task N: [Component Name].
 ## Constraints
 
 CONSTRAINTS:
-- REQUIRED SUB-SKILL: superpowers:test-driven-development — write a failing test first, verify it fails, implement, verify it passes
-- REQUIRED SUB-SKILL: superpowers:verification-before-completion — run verification commands and confirm output before claiming done
-- If you encounter a bug during implementation, use superpowers:systematic-debugging to diagnose before fixing
-- If you receive review feedback, use superpowers:receiving-code-review to process it with technical rigor
+- REQUIRED SUB-SKILL: dp-cto:tdd — write a failing test first, verify it fails, implement, verify it passes
+- REQUIRED SUB-SKILL: dp-cto:verify-done — run verification commands and confirm output before claiming done
+- If you encounter a bug during implementation, use dp-cto:debug to diagnose before fixing
+- If you receive review feedback, use dp-cto:review to process it with technical rigor
 - Verify before claiming done: run the test command, read the full output, show evidence
 - Do NOT modify files outside your scope: [actual file paths from task spec]
 - Do NOT run git write commands (commit, push, checkout, branch)
@@ -227,6 +211,15 @@ Rules for agent prompts:
 - The file list must use the exact paths from the task spec. This becomes the agent's scope boundary.
 - The agent prompt must be self-contained: an agent with no conversation history should be able to execute from the prompt alone.
 
+**Verify the molecule** after all tasks are created:
+
+```bash
+bd list --format table
+bd ready --json
+```
+
+Confirm the task count, dependency graph, and ready tasks look correct before proceeding.
+
 ## Step 6: Update Registry
 
 Read `.claude/plans/_index.md`. If it doesn't exist, create it with this header:
@@ -242,11 +235,11 @@ Add the new plan entry:
 ```markdown
 ### [Feature Name] (`<domain>/`)
 
-| #   | Document                                        | Type           | Status             |
-| --- | ----------------------------------------------- | -------------- | ------------------ |
-| 01  | [Analysis](<domain>/01-analysis.md)             | Reference      | Complete           |
-| 02  | [Implementation](<domain>/02-implementation.md) | Implementation | Awaiting execution |
+| Document                            | Type      | Status   |
+| ----------------------------------- | --------- | -------- |
+| [Analysis](<domain>/01-analysis.md) | Reference | Complete |
 
+**Beads Epic:** `{epic-id}`
 **Scope:** [One-line summary]
 **Deferred:** [Items from YAGNI check, or "None"]
 ```
@@ -255,7 +248,7 @@ Add the new plan entry:
 
 Print exactly:
 
-**"Plan ready at `.claude/plans/<domain>/02-implementation.md`. Run `/dp-cto:execute` to begin."**
+**"Plan ready — beads epic `{epic-id}` with N tasks. Run `/dp-cto:execute` to begin."**
 
 Do NOT invoke execute. Do NOT offer to start execution. The user decides when.
 
