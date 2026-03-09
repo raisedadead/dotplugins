@@ -40,6 +40,15 @@
             "command": "${CLAUDE_PLUGIN_ROOT}/hooks/stage-transition.sh"
           }
         ]
+      },
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/completion-gate.sh"
+          }
+        ]
       }
     ],
     "SessionEnd": [

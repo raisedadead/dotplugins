@@ -62,6 +62,10 @@ case "$SKILL" in
     write_stage "$SESSION_ID" "complete" ""
     clear_breadcrumb
     ;;
+  # Quality / side-effect skills — no stage transition
+  tdd | debug | verify-done | review | sweep)
+    exit 0
+    ;;
   *)
     exit 0
     ;;

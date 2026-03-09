@@ -114,11 +114,24 @@ if [ -n "$SESSION_ID" ]; then
   recover_from_breadcrumb || recover_from_scan || true
 fi
 
+# ─── Beads prime context ─────────────────────────────────────────────────────
+BEADS_CONTEXT=""
+if command -v bd &>/dev/null && [ -d "${CWD}/.beads" ]; then
+  BD_OUTPUT=""
+  set +e
+  BD_OUTPUT=$(cd "$CWD" && bd prime 2>/dev/null)
+  BD_EXIT=$?
+  set -e
+  if [ $BD_EXIT -eq 0 ] && [ -n "$BD_OUTPUT" ]; then
+    BEADS_CONTEXT="$BD_OUTPUT"
+  fi
+fi
+
 # ─── Build output ────────────────────────────────────────────────────────────
 ENFORCEMENT_TEXT="<EXTREMELY_IMPORTANT>
 DP-CTO PLUGIN ENFORCEMENT
 
-The following orchestration skills are DENIED by the dp-cto plugin hook and will be blocked:
+ALL superpowers skills are DENIED by the dp-cto plugin hook and will be blocked:
 - executing-plans
 - dispatching-parallel-agents
 - subagent-driven-development
@@ -126,7 +139,15 @@ The following orchestration skills are DENIED by the dp-cto plugin hook and will
 - finishing-a-development-branch
 - brainstorming
 - writing-plans
-- ralph-loop (replaced by /dp-cto:ralph)
+- ralph-loop
+- test-driven-development
+- requesting-code-review
+- receiving-code-review
+- systematic-debugging
+- verification-before-completion
+- writing-skills
+- using-superpowers
+dp-cto v3.0 replaces all superpowers functionality natively. Uninstall superpowers to avoid conflicts.
 
 dp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requested:
 - /dp-cto:start — brainstorm approaches, write implementation plan to .claude/plans/. Handles the full brainstorming and plan writing lifecycle.
@@ -135,12 +156,15 @@ dp-cto's own skills are NEVER blocked and must ALWAYS be invoked exactly as requ
 - /dp-cto:ralph — subagent-based autonomous iterative loop with fresh context per iteration. Args: PROMPT [--max-iterations N] [--completion-promise TEXT] [--quality-gate CMD].
 - /dp-cto:ralph-cancel — cancel an active ralph loop.
 - /dp-cto:verify — manual deep-validation of research findings.
+- /dp-cto:sweep — codebase-wide lint, format, and cleanup pass.
+
+dp-cto quality skills (native, no superpowers needed): dp-cto:tdd, dp-cto:debug, dp-cto:verify-done, dp-cto:review, dp-cto:sweep.
+
+Beads integration active when bd CLI is available. Plans stored as beads molecules.
 
 These are DISTINCT skills. /dp-cto:execute is NOT the same as executing-plans. Never substitute one dp-cto skill for another.
 
 Workflow: /dp-cto:start → /dp-cto:execute → /dp-cto:polish.
-
-Quality skills from superpowers remain available and are invoked automatically by execute: test-driven-development, requesting-code-review, receiving-code-review, systematic-debugging, verification-before-completion, writing-skills, using-superpowers.
 
 Stage enforcement is active. The hook tracks your workflow stage and only allows valid transitions:
 idle → start → planned → execute → executing → polish → polishing → complete → start (new cycle)
@@ -155,6 +179,11 @@ if [ -n "$RECOVERY_CONTEXT" ]; then
 ${ENFORCEMENT_TEXT}"
 else
   ADDITIONAL_CONTEXT="$ENFORCEMENT_TEXT"
+fi
+
+if [ -n "$BEADS_CONTEXT" ]; then
+  ADDITIONAL_CONTEXT="${BEADS_CONTEXT}
+${ADDITIONAL_CONTEXT}"
 fi
 
 jq -n --arg ctx "$ADDITIONAL_CONTEXT" \
