@@ -27,8 +27,3 @@ node_modules/
 Thumbs.db
 
 !CLAUDE.md
-
-# Beads issue tracker (runtime state, not tracked)
-.beads/
-.dolt/
-AGENTS.md
