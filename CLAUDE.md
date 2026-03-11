@@ -28,7 +28,10 @@ No build step. Plugins are plain Markdown skills + shell hooks.
 
 ## Architecture
 
+State is tracked via epic-scoped beads labels (`dp-cto:<stage>`) with a local `cache.json` for fast reads:
+
 ```
+.claude/dp-cto/cache.json         <- local state cache: {active_epic, stage, sprint, suspended[], synced_at}
 .claude-plugin/marketplace.json    <- marketplace registry (lists all plugins + versions)
 plugins/
   dp-cto/                          <- CTO orchestration plugin
@@ -38,14 +41,17 @@ plugins/
       session-start.sh             <- injects enforcement context + bd prime on session start
       intercept-orchestration.sh   <- PreToolUse hook: stage enforcement for dp-cto skills,
                                       warns on orchestration-adjacent unknowns
+      intercept-bd-init.sh        <- PreToolUse hook: denies bare `bd init` without --stealth flag
       research-validator.sh        <- PostToolUse hook: injects verification checklists
                                       after WebSearch, WebFetch, and MCP tool calls
       completion-gate.sh           <- PostToolUse hook: detects Agent completion claims
                                       without test evidence, injects advisory warning
       stage-transition.sh          <- PostToolUse hook: tracks stage transitions after
                                       dp-cto skill execution
-      session-cleanup.sh           <- SessionEnd hook: preserves stage files with ended status
-      lib-stage.sh                 <- shared library for stage file read/write/breadcrumb ops
+      session-cleanup.sh           <- SessionEnd hook: preserves legacy stage files with ended status
+      lib-stage.sh                 <- shared library for legacy stage file read/write/breadcrumb ops
+      lib-state.sh                 <- shared library for beads-backed state management (cache r/w,
+                                      sync_from_beads, write_state, suspend_state, resume_state)
     skills/start/SKILL.md          <- /dp-cto:start brainstorming, planning, beads molecule creation
     skills/execute/SKILL.md        <- /dp-cto:execute adaptive dispatch via bd ready scheduling
     skills/ralph/SKILL.md          <- /dp-cto:ralph subagent-based iterative loop coordinator
@@ -57,27 +63,36 @@ plugins/
     skills/verify-done/SKILL.md    <- /dp-cto:verify-done gate function, evidence-before-claims
     skills/review/SKILL.md         <- /dp-cto:review dispatch review agent + process feedback
     skills/sweep/SKILL.md          <- /dp-cto:sweep entropy management and pattern drift detection
+    skills/board/SKILL.md          <- /dp-cto:board read-only dashboard
+    skills/sprint/SKILL.md         <- /dp-cto:sprint lifecycle management
+    skills/interrupt/SKILL.md      <- /dp-cto:interrupt context-preserving suspension
+    skills/resume/SKILL.md         <- /dp-cto:resume restore suspended epic
+    skills/cleanup/SKILL.md       <- /dp-cto:cleanup sprint-boundary cleanup
 ```
 
 ### Key design: dp-cto hook system
 
-The dp-cto plugin uses a multi-hook architecture across all four lifecycle events:
+The dp-cto plugin uses a multi-hook architecture across all four lifecycle events. State-aware hooks (`intercept-orchestration.sh`, `stage-transition.sh`, `session-start.sh`) source `lib-state.sh` for beads-backed state management.
 
-**PreToolUse** (`intercept-orchestration.sh`) — tiered Skill interception:
+**PreToolUse** — two hooks:
 
-- **dp-cto skills**: stage enforcement — validates the current workflow stage allows the requested skill (e.g., `execute` requires `planned` stage). Quality skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`) and `ralph-cancel` always pass.
+`intercept-orchestration.sh` — tiered Skill interception:
+
+- **dp-cto skills**: stage enforcement — validates the current workflow stage allows the requested skill (e.g., `execute` requires `planned` stage). Quality skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`, `board`, `sprint`) and `ralph-cancel` always pass. `interrupt` is allowed from `executing` or `polishing`. `resume` is allowed from `idle`.
 - **Tier 1 WARN**: unknown skills with orchestration-adjacent names get a warning
 - **Tier 2 PASS**: everything else passes silently
+
+`intercept-bd-init.sh` (matcher: `Bash`) — denies `bd init` without `--stealth` flag to prevent polluting project `.gitignore`
 
 **PostToolUse** — three hooks:
 
 - `research-validator.sh` — fires on `WebSearch|WebFetch|mcp__.*`, injects verification checklists
-- `stage-transition.sh` — fires on `Skill`, tracks dp-cto stage transitions
+- `stage-transition.sh` — fires on `Skill`, tracks dp-cto stage transitions (including `interrupt` -> `suspend_state` and `resume` -> skill-managed restoration)
 - `completion-gate.sh` — fires on `Agent`, detects completion claims without test evidence, injects advisory warning (defense-in-depth for `dp-cto:verify-done`)
 
-**SessionStart** (`session-start.sh`) — injects enforcement context, runs `bd prime` for beads context injection, detects recoverable prior sessions.
+**SessionStart** (`session-start.sh`) — injects enforcement context, syncs state from beads via `sync_from_beads()`, runs `bd prime` for beads context injection, detects recoverable prior sessions.
 
-**SessionEnd** (`session-cleanup.sh`) — preserves stage files with `ended` status for recovery detection.
+**SessionEnd** (`session-cleanup.sh`) — no-op in v4.0. State lives on beads epics, synced in real-time.
 
 ### Key design: dp-cto:execute adaptive dispatch
 
@@ -122,7 +137,7 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 **Workflow integration**:
 
-- Auto-chained after `/dp-cto:execute` completes (execute → polishing → complete)
+- After `/dp-cto:execute` completes, the stage transitions to `polishing` — the user must manually invoke `/dp-cto:polish` to run the polishing phase (the hook sets the stage but does not auto-invoke the skill)
 - Also available standalone from `complete` stage for re-polishing
 - State machine stage: `polishing` (between `executing` and `complete`)
 
@@ -130,47 +145,70 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 The dp-cto plugin includes a PostToolUse hook (`research-validator.sh`) that fires after WebSearch, WebFetch, and MCP tool calls. It injects verification checklists prompting the agent to cross-check sources. The `/dp-cto:verify` skill provides manual deep-validation on demand.
 
+### Key design: agent protocol
+
+dp-cto uses `bd comments add` to track structured dispatch and outcome data on beads issues:
+
+- **Task-level**: dispatch comments record which agent was assigned and the prompt used; outcome comments record pass/fail, test evidence, and any fix attempts.
+- **Epic-level**: review comments record review agent findings; fix comments record fix agent results per round.
+
+This provides a persistent audit trail per-epic that survives session boundaries and enables `/dp-cto:board` to display progress without re-parsing agent output.
+
+### Key design: sprint framework
+
+`/dp-cto:sprint` manages sprint lifecycle via `bd` labels:
+
+- **Plan**: Create a sprint, assign epics to it, set sprint goals
+- **Review**: Check sprint progress, surface blocked/at-risk epics
+- **Retro**: Retrospective — summarize completed vs. carried-over work, capture learnings
+- **Close**: Close the sprint, carry over incomplete epics to next sprint
+
+Sprint state is stored as beads labels (`sprint:<name>`) on epics. The `cache.json` `sprint` field tracks the active sprint name. Sprint is a quality skill — no stage transitions, allowed from any stage.
+
 ### Key design: beads integration
 
-dp-cto v3.0 uses beads (via the `bd` CLI) for plan storage and task scheduling, replacing markdown-based implementation plans:
+dp-cto v4.0 uses beads (via the `bd` CLI) for plan storage, task scheduling, and stage state, replacing both markdown plans and per-session stage files:
 
 - **`/dp-cto:start` molecule creation**: After brainstorming and analysis (unchanged), creates a beads epic via `bd create`, child tasks via `bd create --parent`, and dependency edges via `bd dep add`. Analysis content is stored as the epic's body via `bd edit --body`. Agent prompts are stored as task descriptions via `bd edit --body`.
 - **`/dp-cto:execute` beads dispatch**: Queries `bd ready --json` for tasks with all blockers resolved, extracts agent prompts from `bd show {task-id} --json`, dispatches agents, and marks completion with `bd close {task-id}`. Re-queries `bd ready` after each round to discover newly unblocked tasks.
 - **`bd prime` context injection**: SessionStart hook runs `bd prime` when `bd` is available and `.beads/` exists in the working directory. Injects a compact 1-2k token summary into the session context (instead of the full plan).
-- **Graceful degradation**: If `bd` is not installed or no `.beads/` directory exists, beads features are skipped silently. The hooks and skills still function for stage tracking and enforcement.
-- **State coexistence**: Beads DB (`.beads/`) handles plan and task state. Stage files (`.claude/dp-cto/`) handle dp-cto's own skill sequencing (start -> execute -> polish). Both coexist.
+- **Graceful degradation**: If `bd` is not installed or no `.beads/` directory exists, beads features are skipped silently. Hooks still fail open, but orchestration skills (start, execute, polish, sprint, interrupt, resume) are disabled without `bd`.
+- **Unified state**: Beads labels (`dp-cto:<stage>`) are the source of truth for stage state. Local `cache.json` (`.claude/dp-cto/cache.json`) is synced from beads on session start and updated in real-time by hooks. No per-session stage files.
 
 ### Key design: harness engineering hooks
 
-dp-cto v3.0 applies harness engineering patterns — defense-in-depth hooks that catch common agent failure modes:
+dp-cto v4.0 applies harness engineering patterns — defense-in-depth hooks that catch common agent failure modes:
 
 - **Completion gate** (`completion-gate.sh`): PostToolUse hook on Agent returns. Detects completion claims ("all tests pass", "implementation complete", etc.) that lack test execution evidence (test runner output, pass/fail counts, exit codes). Injects an advisory warning — does NOT block. Defense-in-depth for the `dp-cto:verify-done` skill.
 - **Sweep** (`/dp-cto:sweep`): Entropy management skill inspired by the principle "Entropy Management Is Garbage Collection." Agents replicate all patterns they find — good and bad. Sweep spawns parallel drift-detection agents per category (dead code, inconsistent patterns, stale comments, naming violations), severity-grades findings, and auto-fixes critical/warning items via one-shot agents with quality gate verification.
 
 ### Key design: native quality skills
 
-dp-cto ships five native quality skills:
+dp-cto ships seven native quality skills:
 
 - **`dp-cto:tdd`** — Iron law, RED-GREEN-REFACTOR, rationalization prevention
 - **`dp-cto:debug`** — 4-phase investigation, 3-fix architecture check
 - **`dp-cto:verify-done`** — Gate function, evidence-before-claims (reinforced by completion-gate hook)
 - **`dp-cto:review`** — Dispatch review agent + process feedback with technical rigor
 - **`dp-cto:sweep`** — Entropy management, pattern drift detection and cleanup
+- **`dp-cto:board`** — Read-only project dashboard (epic status, task progress, blockers)
+- **`dp-cto:sprint`** — Sprint lifecycle management (Plan/Review/Retro/Close)
 
 These are side-effect-free quality skills: no stage transitions, always allowed by the hook system regardless of workflow stage.
 
 ### Key design: session recovery
 
-Breadcrumb file at `.claude/dp-cto/active.json` tracks the active session:
+Recovery is primarily via beads query (`bd query "label=dp-cto:*"`) and `sync_from_beads()` in `lib-state.sh`:
 
-- Written on `planned` (after start completes), updated to `polishing` (after execute completes), cleared on `complete` (after polish completes)
-- SessionStart checks the breadcrumb (fast path), then scans `*.stage.json` for non-terminal states (fallback)
-- Multiple orphaned stage files resolved by latest `started_at`
-- SessionEnd preserves stage files with `ended` status instead of deleting — enables recovery detection on next session start
+- SessionStart calls `sync_from_beads()` which queries beads for epics with `dp-cto:*` labels and populates `cache.json`
+- Epics in non-terminal stages (`planning`, `planned`, `executing`, `polishing`) are detected as recoverable
+- Suspended epics (label `dp-cto:suspended`) are tracked in the `cache.json` `suspended[]` array
+- Breadcrumb file at `.claude/dp-cto/active.json` still exists as a fast-path fallback, with legacy `*.stage.json` scan as final fallback
+- `cache.json` is the primary local state file, synced from beads on each session start
 
 ### Key design: stage machine
 
-The dp-cto plugin enforces a linear workflow via stage tracking in `.claude/dp-cto/{session}.stage.json`:
+The dp-cto plugin enforces a linear workflow via epic-scoped beads labels (`dp-cto:<stage>`) cached locally in `cache.json`:
 
 ```
 idle ──→ planning ──→ planned ──→ executing ──→ polishing ──→ complete
@@ -178,22 +216,25 @@ idle ──→ planning ──→ planned ──→ executing ──→ polishin
  │         running)      done)       running)      done)         │
  └───────────────────────────────────────────────────────────────┘
                            new cycle (start)
+
+executing ──→ suspended ──→ executing   (via interrupt → resume)
+polishing ──→ suspended ──→ polishing
 ```
 
 **Transient states** (`planning`, `executing`, `polishing`): Set by PreToolUse when a skill starts. If interrupted, recovery detects these as non-terminal.
 
-**Resting states** (`idle`, `planned`, `complete`): Set by PostToolUse when a skill completes. Stable between skill invocations.
+**Resting states** (`idle`, `planned`, `complete`, `suspended`): Set by PostToolUse when a skill completes. Stable between skill invocations. `suspended` is entered via `/dp-cto:interrupt` and exited via `/dp-cto:resume` (which restores the epic to its pre-suspension stage).
 
-Side-effect-free skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`) and `ralph-cancel` are allowed from any stage.
+Side-effect-free skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`, `board`, `sprint`) and `ralph-cancel` are allowed from any stage. `cleanup` is also stage-unrestricted but has side effects (cache deletion, epic closure, label cleanup).
 
 ## Prerequisites
 
-| Dependency       | Required      | If Missing                                                                                                                                                           |
-| ---------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash`           | Yes (runtime) | Hooks cannot execute at all                                                                                                                                          |
-| `jq`             | Yes (runtime) | All hooks fail open — no stage tracking, no enforcement, no research validation, no completion gate                                                                  |
-| `bd` CLI (beads) | No (optional) | Beads features skipped silently — `/dp-cto:start` cannot create molecules, `/dp-cto:execute` cannot use `bd ready` scheduling, `bd prime` context injection disabled |
-| `shellcheck`     | No (dev only) | `pnpm run validate` fails but plugin functions normally at runtime                                                                                                   |
+| Dependency       | Required                              | If Missing                                                                                                                                                                                                                                                                            |
+| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash`           | Yes (runtime)                         | Hooks cannot execute at all                                                                                                                                                                                                                                                           |
+| `jq`             | Yes (runtime)                         | All hooks fail open — no stage tracking, no enforcement, no research validation, no completion gate                                                                                                                                                                                   |
+| `bd` CLI (beads) | Yes (required for full functionality) | Hooks degrade gracefully — orchestration skills (`start`, `execute`, `polish`, `sprint`, `interrupt`, `resume`) disabled without `bd`. Quality skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`, `board`, `cleanup`) remain available. `bd prime` context injection disabled. |
+| `shellcheck`     | No (dev only)                         | `pnpm run validate` fails but plugin functions normally at runtime                                                                                                                                                                                                                    |
 
 All hooks are designed to **fail open** — if a dependency is missing, the hook exits 0 without blocking the user. This means the plugin degrades gracefully but silently: stage enforcement, research validation, and completion gates all become inactive without `jq`.
 
@@ -224,8 +265,10 @@ Follows Anthropic's official marketplace conventions:
 - Plugin skills live in `skills/<name>/SKILL.md` (not `commands/`) — must have YAML frontmatter with `---`
 - Ralph state files go in `.claude/ralph/` (not `.claude/` root) — session-scoped by timestamp
 - dp-cto PostToolUse hook fires on ALL MCP tools (`mcp__.*`) — if this causes noise, narrow the matcher
-- Stage files are preserved on SessionEnd (not deleted) — `.claude/dp-cto/active.json` is the recovery breadcrumb
-- `bd` CLI must be on `$PATH` for beads features — hooks check `command -v bd` and degrade gracefully if absent
+- `cache.json` (`.claude/dp-cto/cache.json`) is the local state file, not per-session — one file per project, synced from beads on session start
+- `.claude/dp-cto/active.json` breadcrumb still exists as a recovery fast-path fallback
+- `bd` CLI must be on `$PATH` for orchestration skills — hooks check `command -v bd` and degrade gracefully if absent
+- `board` and `sprint` are quality skills (side-effect-free, allowed from any stage)
 - Completion gate hook fires on ALL Agent returns — may produce advisory warnings on non-implementation agents
 
 ## Plugin Installation

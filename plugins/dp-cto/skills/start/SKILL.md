@@ -95,7 +95,7 @@ Create a beads epic with the analysis as its body, then create child tasks.
 bd create "[Feature Name]" --type epic
 ```
 
-Record the returned epic ID (e.g., `EPIC-1`).
+Record the returned epic ID (e.g., `EPIC-1`). State is tracked on this epic via beads labels (e.g., `dp-cto=planned`). The PostToolUse hook (`stage-transition.sh`) sets the label automatically when this skill completes — no manual state calls needed.
 
 **Set the analysis as the epic body** using `bd edit {epic-id} --body`:
 
@@ -221,7 +221,7 @@ Do NOT invoke execute. Do NOT offer to start execution. The user decides when.
 <CHAIN>
 Planning complete. The next step in the workflow is /dp-cto:execute.
 The user decides when to run it. Do NOT auto-invoke /dp-cto:execute.
-The stage machine will deny any skill except /dp-cto:execute or /dp-cto:start (re-plan) at this point.
+The stage machine (via epic state label dp-cto=planned) will deny any skill except /dp-cto:execute or /dp-cto:start (re-plan) at this point.
 </CHAIN>
 
 ## NEVER

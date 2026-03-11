@@ -18,8 +18,8 @@ if [ "$TOOL_NAME" != "Skill" ]; then
 fi
 
 # Stage enforcement for dp-cto skills
-# shellcheck source=lib-stage.sh
-source "$(dirname "$0")/lib-stage.sh"
+# shellcheck source=lib-state.sh
+source "$(dirname "$0")/lib-state.sh"
 
 case "$SKILL_NAME" in
   dp-cto:*)
@@ -43,22 +43,22 @@ case "$SKILL_NAME" in
 
     # Quality skills — side-effect-free, no stage transition, pass silently
     case "$SKILL" in
-      tdd|debug|verify-done|review|sweep|reset)
+      tdd|debug|verify-done|review|sweep|cleanup|board|sprint)
         exit 0
         ;;
     esac
 
-    CURRENT_STAGE=$(read_stage "$SESSION_ID")
+    CURRENT_STAGE=$(read_cache | jq -r '.stage // "idle"' 2>/dev/null)
+    CURRENT_STAGE="${CURRENT_STAGE:-idle}"
 
     ALLOWED=false
 
     case "$CURRENT_STAGE" in
       idle)
-        if [ "$SKILL" = "start" ]; then
-          ALLOWED=true
-        else
-          REASON="Run /dp-cto:start first to create a plan."
-        fi
+        case "$SKILL" in
+          start|resume) ALLOWED=true ;;
+          *) REASON="Run /dp-cto:start first to create a plan." ;;
+        esac
         ;;
       planning)
         REASON="A plan is being created. Wait for /dp-cto:start to complete."
@@ -71,13 +71,13 @@ case "$SKILL_NAME" in
         ;;
       executing)
         case "$SKILL" in
-          ralph|verify|polish) ALLOWED=true ;;
+          ralph|verify|polish|interrupt) ALLOWED=true ;;
           *) REASON="Implementation in progress. Complete execution first, or use /dp-cto:ralph-cancel to abort." ;;
         esac
         ;;
       polishing)
         case "$SKILL" in
-          verify|polish) ALLOWED=true ;;
+          verify|polish|interrupt) ALLOWED=true ;;
           *) REASON="Polish in progress. Wait for /dp-cto:polish to complete." ;;
         esac
         ;;
@@ -89,20 +89,37 @@ case "$SKILL_NAME" in
         ;;
       *)
         # Unknown stage — treat as idle
-        if [ "$SKILL" = "start" ]; then
-          ALLOWED=true
-        else
-          REASON="Run /dp-cto:start first to create a plan."
-        fi
+        case "$SKILL" in
+          start|resume) ALLOWED=true ;;
+          *) REASON="Run /dp-cto:start first to create a plan." ;;
+        esac
         ;;
     esac
 
     if [ "$ALLOWED" = "true" ]; then
-      # Write pre-execution stage for transitional skills
+      # Write pre-execution transient stage
+      ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
       case "$SKILL" in
-        start) write_stage "$SESSION_ID" "planning" "" ;;
-        execute) write_stage "$SESSION_ID" "executing" "" ;;
-        polish) write_stage "$SESSION_ID" "polishing" "" ;;
+        start)
+          CACHE=$(read_cache)
+          write_cache "$(echo "$CACHE" | jq -c '.stage = "planning"')"
+          ;;
+        execute)
+          if [ -n "$ACTIVE_EPIC" ]; then
+            write_state "$ACTIVE_EPIC" "executing" 2>/dev/null || true
+          else
+            CACHE=$(read_cache)
+            write_cache "$(echo "$CACHE" | jq -c '.stage = "executing"')"
+          fi
+          ;;
+        polish)
+          if [ -n "$ACTIVE_EPIC" ]; then
+            write_state "$ACTIVE_EPIC" "polishing" 2>/dev/null || true
+          else
+            CACHE=$(read_cache)
+            write_cache "$(echo "$CACHE" | jq -c '.stage = "polishing"')"
+          fi
+          ;;
       esac
       exit 0
     fi

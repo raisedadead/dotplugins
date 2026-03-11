@@ -28,44 +28,53 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 export CWD="${CWD_INPUT:-$(pwd)}"
-source "$(dirname "$0")/lib-stage.sh"
+# shellcheck source=lib-state.sh
+source "$(dirname "$0")/lib-state.sh"
 
 SKILL="${SKILL_NAME#dp-cto:}"
 
 case "$SKILL" in
   start)
-    # Legacy: _index.md plan-path extraction (pre-v3.0 markdown plans only).
-    # v3.0+ uses beads — this code no-ops when _index.md doesn't exist.
-    PLAN_PATH=""
-    INDEX_FILE="$CWD/.claude/plans/_index.md"
-    if [ -f "$INDEX_FILE" ]; then
-      PLAN_PATH=$(grep -o '[^(]*02-implementation\.md' "$INDEX_FILE" | tail -1 || true)
-      if [ -n "$PLAN_PATH" ]; then
-        PLAN_PATH=".claude/plans/$PLAN_PATH"
-      fi
-      case "$PLAN_PATH" in
-        .claude/plans/*) ;; # OK
-        *) PLAN_PATH="" ;;  # reject unexpected paths
-      esac
-      case "$PLAN_PATH" in
-        *..* ) PLAN_PATH="" ;; # reject path traversal
-      esac
+    # Read active epic — start skill should have set it during execution
+    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
+    if [ -n "$ACTIVE_EPIC" ]; then
+      write_state "$ACTIVE_EPIC" "planned" 2>/dev/null || true
+    else
+      CACHE=$(read_cache)
+      write_cache "$(echo "$CACHE" | jq -c '.stage = "planned"')" 2>/dev/null || true
     fi
-    write_stage "$SESSION_ID" "planned" "$PLAN_PATH"
-    write_breadcrumb "$SESSION_ID" "planned" "$PLAN_PATH" "$CWD"
     ;;
   execute)
-    EXISTING=$(read_breadcrumb)
-    EXISTING_PLAN=$(echo "$EXISTING" | jq -r '.plan_path // empty' 2>/dev/null || true)
-    write_stage "$SESSION_ID" "polishing" ""
-    write_breadcrumb "$SESSION_ID" "polishing" "${EXISTING_PLAN}" "$CWD"
+    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
+    if [ -n "$ACTIVE_EPIC" ]; then
+      write_state "$ACTIVE_EPIC" "polishing" 2>/dev/null || true
+    else
+      CACHE=$(read_cache)
+      write_cache "$(echo "$CACHE" | jq -c '.stage = "polishing"')" 2>/dev/null || true
+    fi
     ;;
   polish)
-    write_stage "$SESSION_ID" "complete" ""
-    clear_breadcrumb
+    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
+    if [ -n "$ACTIVE_EPIC" ]; then
+      write_state "$ACTIVE_EPIC" "complete" 2>/dev/null || true
+    else
+      CACHE=$(read_cache)
+      write_cache "$(echo "$CACHE" | jq -c '.stage = "complete"')" 2>/dev/null || true
+    fi
+    ;;
+  interrupt)
+    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
+    if [ -n "$ACTIVE_EPIC" ]; then
+      suspend_state "$ACTIVE_EPIC" 2>/dev/null || true
+    fi
+    ;;
+  resume)
+    # resume_state is called by the skill itself (needs epic selection logic).
+    # No automatic transition here — the skill handles state restoration.
+    exit 0
     ;;
   # Quality / side-effect skills — no stage transition
-  tdd | debug | verify-done | review | sweep | reset)
+  tdd|debug|verify-done|review|sweep|cleanup|board|sprint)
     exit 0
     ;;
   *)

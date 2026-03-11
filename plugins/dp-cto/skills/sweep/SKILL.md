@@ -76,7 +76,7 @@ Show the user the selected categories and detected quality-gate command, then pr
 
 ## Step 1: Gather Scope
 
-1. Read the active plan path from the stage state file (`.claude/dp-cto/*.stage.json`). If no stage file exists or the plan path is empty, skip this step — the git diff in step 2 provides sufficient scope.
+1. Read the active epic from the local cache (`.claude/dp-cto/cache.json`). If no active epic is found, check bd query for epics with active dp-cto labels. If still not found, skip this step — the git diff in step 2 provides sufficient scope.
 2. Run `git diff main...HEAD --name-only` to get all files changed in this cycle
    - If no diff against main (e.g., standalone invocation), use `git diff HEAD~10 --name-only` as fallback (wider window than polish — entropy accumulates across more commits)
 3. Also include files in directories adjacent to changed files (entropy often lurks in neighbors that weren't touched but should have been updated)

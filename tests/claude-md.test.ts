@@ -44,17 +44,18 @@ describe("CLAUDE.md documentation", () => {
       expect(content).toMatch(/complete/);
     });
 
-    test("documents SessionStart fast path and fallback scan", () => {
-      expect(content).toMatch(/fast path/);
+    test("documents beads-backed recovery with fallback", () => {
+      expect(content).toMatch(/sync_from_beads/);
       expect(content).toMatch(/fallback/);
     });
 
-    test("documents multiple orphaned files resolution", () => {
-      expect(content).toMatch(/started_at/);
+    test("documents suspended epics in recovery", () => {
+      expect(content).toMatch(/suspended/);
+      expect(content).toMatch(/cache\.json/);
     });
 
-    test("documents SessionEnd preserving stage files", () => {
-      expect(content).toMatch(/ended.*status/i);
+    test("documents SessionEnd as no-op in v4.0", () => {
+      expect(content).toMatch(/no-op in v4\.0/i);
     });
   });
 
@@ -66,10 +67,8 @@ describe("CLAUDE.md documentation", () => {
   });
 
   describe("gotchas", () => {
-    test("documents stage file preservation gotcha", () => {
-      expect(content).toMatch(
-        /Stage files are preserved on SessionEnd.*active\.json.*recovery breadcrumb/,
-      );
+    test("documents cache.json as local state file gotcha", () => {
+      expect(content).toMatch(/cache\.json.*local state file.*not per-session/);
     });
   });
 
@@ -78,8 +77,9 @@ describe("CLAUDE.md documentation", () => {
       expect(content).toMatch(/`jq`.*Yes.*runtime/);
     });
 
-    test("documents bd CLI as optional with degradation", () => {
-      expect(content).toMatch(/`bd`.*No.*optional/i);
+    test("documents bd CLI as required with graceful degradation", () => {
+      expect(content).toMatch(/`bd`.*Yes.*required/i);
+      expect(content).toMatch(/degrade gracefully/i);
     });
 
     test("documents fail-open behavior", () => {

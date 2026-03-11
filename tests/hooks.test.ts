@@ -1,22 +1,21 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { spawn } from "node:child_process";
-import { rm } from "node:fs/promises";
+import { execFileSync, spawn } from "node:child_process";
+import { mkdir, writeFile, mkdtemp, symlink, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
   runHook,
   seedStage,
-  seedCorruptStage,
+  seedCache,
+  seedCorruptCache,
+  seedBeadsDir,
+  createMockBd,
   getStage,
-  getPlanPath,
-  getFullStage,
+  getCacheStage,
   listStageDir,
-  seedIndex,
+  seedBreadcrumb,
   createTmpDir,
   removeTmpDir,
-  getBreadcrumb,
-  breadcrumbExists,
-  seedBreadcrumb,
   HOOK_DIR,
 } from "./helpers";
 import type { HookResult } from "./helpers";
@@ -68,7 +67,7 @@ function expectDenied(r: Awaited<ReturnType<typeof runHook>>, reasonMatch?: RegE
 
 describe("Stage Enforcement (intercept-orchestration.sh)", () => {
   describe("idle stage", () => {
-    beforeEach(() => seedStage(tmpDir, "test-session", "idle"));
+    // No cache file = idle (fail-open default)
 
     test("start is allowed", async () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
@@ -92,7 +91,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
   });
 
   describe("planning stage", () => {
-    beforeEach(() => seedStage(tmpDir, "test-session", "planning"));
+    beforeEach(() => seedCache(tmpDir, "planning"));
 
     test("start is denied (in progress)", async () => {
       expectDenied(
@@ -121,7 +120,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
   });
 
   describe("planned stage", () => {
-    beforeEach(() => seedStage(tmpDir, "test-session", "planned"));
+    beforeEach(() => seedCache(tmpDir, "planned"));
 
     test("execute is allowed", async () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:execute")));
@@ -145,7 +144,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
   });
 
   describe("executing stage", () => {
-    beforeEach(() => seedStage(tmpDir, "test-session", "executing"));
+    beforeEach(() => seedCache(tmpDir, "executing"));
 
     test("ralph is allowed", async () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph")));
@@ -169,7 +168,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
   });
 
   describe("polishing stage", () => {
-    beforeEach(() => seedStage(tmpDir, "test-session", "polishing"));
+    beforeEach(() => seedCache(tmpDir, "polishing"));
 
     test("verify is allowed", async () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:verify")));
@@ -206,7 +205,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
   });
 
   describe("complete stage", () => {
-    beforeEach(() => seedStage(tmpDir, "test-session", "complete"));
+    beforeEach(() => seedCache(tmpDir, "complete"));
 
     test("start is allowed (new cycle)", async () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
@@ -242,60 +241,50 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     test.each(["idle", "planning", "planned", "executing", "polishing", "complete"])(
       "allowed from %s",
       async (stage) => {
-        await seedStage(tmpDir, "test-session", stage);
+        if (stage !== "idle") await seedCache(tmpDir, stage);
         expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
       },
     );
   });
 
-  describe("pre-execution stage writes", () => {
-    test("start writes planning stage", async () => {
-      await seedStage(tmpDir, "test-session", "idle");
+  describe("pre-execution cache writes", () => {
+    test("start writes planning stage to cache", async () => {
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
-      expect(await getStage(tmpDir, "test-session")).toBe("planning");
+      expect(await getCacheStage(tmpDir)).toBe("planning");
     });
 
-    test("execute writes executing stage", async () => {
-      await seedStage(tmpDir, "test-session", "planned");
+    test("execute writes executing stage to cache", async () => {
+      await seedCache(tmpDir, "planned");
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:execute")));
-      expect(await getStage(tmpDir, "test-session")).toBe("executing");
+      expect(await getCacheStage(tmpDir)).toBe("executing");
     });
 
-    test("polish writes polishing stage", async () => {
-      await seedStage(tmpDir, "test-session", "executing");
+    test("polish writes polishing stage to cache", async () => {
+      await seedCache(tmpDir, "executing");
       expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
-      expect(await getStage(tmpDir, "test-session")).toBe("polishing");
+      expect(await getCacheStage(tmpDir)).toBe("polishing");
     });
 
-    test("execute preserves existing plan_path", async () => {
-      await seedStage(tmpDir, "test-session", "planned", ".claude/plans/test/02-implementation.md");
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:execute")));
-      expect(await getPlanPath(tmpDir, "test-session")).toBe(
-        ".claude/plans/test/02-implementation.md",
-      );
-    });
-
-    test("start preserves existing plan_path during pre-execution write", async () => {
-      await seedStage(tmpDir, "test-session", "complete", ".claude/plans/old/02-implementation.md");
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
-      expect(await getStage(tmpDir, "test-session")).toBe("planning");
-      expect(await getPlanPath(tmpDir, "test-session")).toBe(
-        ".claude/plans/old/02-implementation.md",
-      );
-    });
-
-    test("polish preserves existing plan_path", async () => {
-      await seedStage(
-        tmpDir,
-        "test-session",
-        "executing",
-        ".claude/plans/test/02-implementation.md",
-      );
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
-      expect(await getStage(tmpDir, "test-session")).toBe("polishing");
-      expect(await getPlanPath(tmpDir, "test-session")).toBe(
-        ".claude/plans/test/02-implementation.md",
-      );
+    test("execute from planned with active epic calls write_state", async () => {
+      await seedCache(tmpDir, "planned", "epic-42");
+      const mockPath = await createMockBd(tmpDir);
+      try {
+        const r = await runHook(
+          "intercept-orchestration.sh",
+          {
+            tool_name: "Skill",
+            tool_input: { skill: "dp-cto:execute" },
+            session_id: "s1",
+            cwd: tmpDir,
+          },
+          { PATH: mockPath },
+        );
+        expect(r.exitCode).toBe(0);
+        const stage = await getCacheStage(tmpDir);
+        expect(stage).toBe("executing");
+      } finally {
+        await rm(join(tmpDir, ".mock-bin"), { recursive: true, force: true });
+      }
     });
   });
 
@@ -306,6 +295,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       "dp-cto:verify-done",
       "dp-cto:review",
       "dp-cto:sweep",
+      "dp-cto:cleanup",
     ])("%s is allowed from idle", async (skill) => {
       const r = await runHook(HOOK, skillInput(skill));
       expectAllowed(r);
@@ -316,23 +306,98 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
     test.each(["planning", "planned", "executing", "polishing", "complete"])(
       "quality skills pass from %s stage",
       async (stage) => {
-        await seedStage(tmpDir, "test-session", stage);
+        await seedCache(tmpDir, stage);
         for (const skill of [
           "dp-cto:tdd",
           "dp-cto:debug",
           "dp-cto:verify-done",
           "dp-cto:review",
           "dp-cto:sweep",
+          "dp-cto:cleanup",
         ]) {
           expectAllowed(await runHook(HOOK, skillInput(skill)));
         }
       },
     );
 
-    test("quality skills do not write stage transitions", async () => {
-      await seedStage(tmpDir, "test-session", "executing");
+    test("quality skills do not write cache transitions", async () => {
+      await seedCache(tmpDir, "executing");
       await runHook(HOOK, skillInput("dp-cto:tdd"));
-      expect(await getStage(tmpDir, "test-session")).toBe("executing");
+      expect(await getCacheStage(tmpDir)).toBe("executing");
+    });
+  });
+
+  describe("board and sprint quality skill bypass", () => {
+    test("board passes from idle (no stage enforcement)", async () => {
+      const r = await runHook(HOOK, skillInput("dp-cto:board"));
+      expectAllowed(r);
+      expect(r.stdout).toBe("");
+      expect(r.json).toBeNull();
+    });
+
+    test("board passes from executing (quality skill bypass)", async () => {
+      await seedCache(tmpDir, "executing");
+      const r = await runHook(HOOK, skillInput("dp-cto:board"));
+      expectAllowed(r);
+      expect(r.stdout).toBe("");
+      expect(r.json).toBeNull();
+    });
+
+    test("sprint passes from idle", async () => {
+      const r = await runHook(HOOK, skillInput("dp-cto:sprint"));
+      expectAllowed(r);
+      expect(r.stdout).toBe("");
+      expect(r.json).toBeNull();
+    });
+
+    test("sprint passes from executing", async () => {
+      await seedCache(tmpDir, "executing");
+      const r = await runHook(HOOK, skillInput("dp-cto:sprint"));
+      expectAllowed(r);
+      expect(r.stdout).toBe("");
+      expect(r.json).toBeNull();
+    });
+  });
+
+  describe("interrupt stage enforcement", () => {
+    test("interrupt allowed from executing", async () => {
+      await seedCache(tmpDir, "executing");
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:interrupt")));
+    });
+
+    test("interrupt allowed from polishing", async () => {
+      await seedCache(tmpDir, "polishing");
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:interrupt")));
+    });
+
+    test("interrupt denied from idle", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:interrupt")), /start/i);
+    });
+
+    test("interrupt denied from planned", async () => {
+      await seedCache(tmpDir, "planned");
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:interrupt")), /execute/i);
+    });
+
+    test("interrupt denied from complete", async () => {
+      await seedCache(tmpDir, "complete");
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:interrupt")), /start/i);
+    });
+  });
+
+  describe("resume stage enforcement", () => {
+    test("resume allowed from idle", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:resume")));
+    });
+
+    test("resume denied from executing", async () => {
+      await seedCache(tmpDir, "executing");
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:resume")), /in progress/i);
+    });
+
+    test("resume denied from planned", async () => {
+      await seedCache(tmpDir, "planned");
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:resume")), /execute/i);
     });
   });
 });
@@ -375,107 +440,93 @@ describe("Skill Interception (intercept-orchestration.sh)", () => {
 describe("Stage Transitions (stage-transition.sh)", () => {
   const hook = "stage-transition.sh";
 
-  test("start transitions planning -> planned", async () => {
-    await seedStage(tmpDir, "test-session", "planning");
+  test("start transitions to planned via cache", async () => {
+    await seedCache(tmpDir, "planning");
     await runHook(hook, skillInput("dp-cto:start"));
-    expect(await getStage(tmpDir, "test-session")).toBe("planned");
+    expect(await getCacheStage(tmpDir)).toBe("planned");
   });
 
-  test("execute transitions executing -> polishing", async () => {
-    await seedStage(tmpDir, "test-session", "executing");
+  test("execute transitions to polishing via cache", async () => {
+    await seedCache(tmpDir, "executing");
     await runHook(hook, skillInput("dp-cto:execute"));
-    expect(await getStage(tmpDir, "test-session")).toBe("polishing");
+    expect(await getCacheStage(tmpDir)).toBe("polishing");
   });
 
-  test("polish transitions polishing -> complete", async () => {
-    await seedStage(tmpDir, "test-session", "polishing");
+  test("polish transitions to complete via cache", async () => {
+    await seedCache(tmpDir, "polishing");
     await runHook(hook, skillInput("dp-cto:polish"));
-    expect(await getStage(tmpDir, "test-session")).toBe("complete");
+    expect(await getCacheStage(tmpDir)).toBe("complete");
   });
 
-  test("ralph does not change stage", async () => {
-    await seedStage(tmpDir, "test-session", "executing");
+  test("ralph does not change cache stage", async () => {
+    await seedCache(tmpDir, "executing");
     await runHook(hook, skillInput("dp-cto:ralph"));
-    expect(await getStage(tmpDir, "test-session")).toBe("executing");
+    expect(await getCacheStage(tmpDir)).toBe("executing");
   });
 
-  test("verify does not change stage", async () => {
-    await seedStage(tmpDir, "test-session", "executing");
+  test("verify does not change cache stage", async () => {
+    await seedCache(tmpDir, "executing");
     await runHook(hook, skillInput("dp-cto:verify"));
-    expect(await getStage(tmpDir, "test-session")).toBe("executing");
+    expect(await getCacheStage(tmpDir)).toBe("executing");
   });
 
   test("non-dp-cto skill has no side effects", async () => {
-    await seedStage(tmpDir, "test-session", "executing");
+    await seedCache(tmpDir, "executing");
     await runHook(hook, skillInput("some-other-plugin:tdd"));
-    expect(await getStage(tmpDir, "test-session")).toBe("executing");
+    expect(await getCacheStage(tmpDir)).toBe("executing");
   });
 
-  test("start extracts plan_path from _index.md", async () => {
-    await seedStage(tmpDir, "test-session", "planning");
-    await seedIndex(tmpDir, "tui/02-implementation.md");
-    await runHook("stage-transition.sh", skillInput("dp-cto:start"));
-    expect(await getPlanPath(tmpDir, "test-session")).toBe(
-      ".claude/plans/tui/02-implementation.md",
-    );
-  });
-});
-
-// ─── Breadcrumb Tracking ─────────────────────────────────────────────────────
-
-describe("Breadcrumb Tracking (stage-transition.sh)", () => {
-  const hook = "stage-transition.sh";
-
-  test("start writes active.json with planned stage and correct plan_path", async () => {
-    await seedStage(tmpDir, "test-session", "planning");
-    await seedIndex(tmpDir, "tui/02-implementation.md");
-    await runHook(hook, skillInput("dp-cto:start"));
-    expect(await breadcrumbExists(tmpDir)).toBe(true);
-    const raw = await getBreadcrumb(tmpDir);
-    const breadcrumb = JSON.parse(raw);
-    expect(breadcrumb.stage).toBe("planned");
-    expect(breadcrumb.plan_path).toBe(".claude/plans/tui/02-implementation.md");
-    expect(breadcrumb.session_id).toBe("test-session");
-    expect(breadcrumb.cwd).toBe(tmpDir);
+  test("interrupt triggers suspend_state via stage-transition", async () => {
+    await seedCache(tmpDir, "executing", "epic-42");
+    const mockPath = await createMockBd(tmpDir);
+    try {
+      const r = await runHook(
+        hook,
+        {
+          tool_name: "Skill",
+          tool_input: { skill: "dp-cto:interrupt" },
+          tool_result: "done",
+          session_id: "s1",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
+      expect(r.exitCode).toBe(0);
+      const stage = await getCacheStage(tmpDir);
+      expect(stage).toBe("idle");
+    } finally {
+      await rm(join(tmpDir, ".mock-bin"), { recursive: true, force: true });
+    }
   });
 
-  test("execute updates active.json to polishing and preserves plan_path", async () => {
-    await seedStage(tmpDir, "test-session", "executing");
-    await seedIndex(tmpDir, "tui/02-implementation.md");
-    await runHook(hook, skillInput("dp-cto:start"));
-    await seedStage(tmpDir, "test-session", "planned", ".claude/plans/tui/02-implementation.md");
-    await runHook(hook, skillInput("dp-cto:execute"));
-    expect(await breadcrumbExists(tmpDir)).toBe(true);
-    const raw = await getBreadcrumb(tmpDir);
-    const breadcrumb = JSON.parse(raw);
-    expect(breadcrumb.stage).toBe("polishing");
-    expect(breadcrumb.plan_path).toBe(".claude/plans/tui/02-implementation.md");
-  });
-
-  test("polish deletes active.json", async () => {
-    await seedStage(tmpDir, "test-session", "polishing");
-    await seedIndex(tmpDir, "tui/02-implementation.md");
-    await runHook(hook, skillInput("dp-cto:start"));
-    expect(await breadcrumbExists(tmpDir)).toBe(true);
-    await seedStage(tmpDir, "test-session", "polishing");
-    await runHook(hook, skillInput("dp-cto:polish"));
-    expect(await breadcrumbExists(tmpDir)).toBe(false);
+  test("resume does not modify cache via stage-transition", async () => {
+    await seedCache(tmpDir, "idle");
+    const r = await runHook(hook, {
+      tool_name: "Skill",
+      tool_input: { skill: "dp-cto:resume" },
+      tool_result: "done",
+      session_id: "s1",
+      cwd: tmpDir,
+    });
+    expect(r.exitCode).toBe(0);
+    const stage = await getCacheStage(tmpDir);
+    expect(stage).toBe("idle");
   });
 });
 
 // ─── Edge Cases ─────────────────────────────────────────────────────────────
 
 describe("Edge Cases", () => {
-  test("missing stage file defaults to idle — start allowed", async () => {
+  test("missing cache file defaults to idle — start allowed", async () => {
     expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
   });
 
-  test("missing stage file defaults to idle — execute denied", async () => {
+  test("missing cache file defaults to idle — execute denied", async () => {
     expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")));
   });
 
-  test("corrupt JSON defaults to idle — start allowed", async () => {
-    await seedCorruptStage(tmpDir, "test-session");
+  test("corrupt cache JSON defaults to idle — start allowed", async () => {
+    await seedCorruptCache(tmpDir);
     expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
   });
 
@@ -491,12 +542,12 @@ describe("Edge Cases", () => {
   });
 
   test("unknown stage value treated as idle — start allowed", async () => {
-    await seedStage(tmpDir, "test-session", "bogus");
+    await seedCache(tmpDir, "bogus");
     expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
   });
 
   test("unknown stage value treated as idle — execute denied", async () => {
-    await seedStage(tmpDir, "test-session", "bogus");
+    await seedCache(tmpDir, "bogus");
     expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /start/i);
   });
 });
@@ -506,7 +557,7 @@ describe("Edge Cases", () => {
 describe("SessionStart (session-start.sh)", () => {
   const SESSION_HOOK = "session-start.sh";
 
-  test("initializes stage to idle", async () => {
+  test("initializes legacy stage to idle (degraded mode)", async () => {
     const r = await runHook(SESSION_HOOK, {
       session_id: "test-session",
       cwd: tmpDir,
@@ -515,7 +566,7 @@ describe("SessionStart (session-start.sh)", () => {
     expect(await getStage(tmpDir, "test-session")).toBe("idle");
   });
 
-  test("overwrites existing stage on new session", async () => {
+  test("overwrites existing stage on new session (degraded mode)", async () => {
     await seedStage(tmpDir, "test-session", "executing");
     const r = await runHook(SESSION_HOOK, {
       session_id: "test-session",
@@ -535,12 +586,35 @@ describe("SessionStart (session-start.sh)", () => {
     expect(ctx).toMatch(/planning/);
   });
 
+  test("degraded mode message when .beads/ missing", async () => {
+    const r = await runHook(SESSION_HOOK, {
+      session_id: "test-session",
+      cwd: tmpDir,
+    });
+    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+      ?.additionalContext as string;
+    expect(ctx).toMatch(/beads/i);
+  });
+
   describe("session recovery detection", () => {
+    // Recovery requires non-degraded mode (.beads/ dir + bd CLI).
+    // Use mock bd to avoid real bd hanging in empty .beads/ dir.
+    let mockPath: string;
+
+    beforeEach(async () => {
+      await seedBeadsDir(tmpDir);
+      mockPath = await createMockBd(tmpDir);
+    });
+
     test("clean start (no orphans): no recovery context", async () => {
-      const r = await runHook(SESSION_HOOK, {
-        session_id: "new-session",
-        cwd: tmpDir,
-      });
+      const r = await runHook(
+        SESSION_HOOK,
+        {
+          session_id: "new-session",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
@@ -551,27 +625,34 @@ describe("SessionStart (session-start.sh)", () => {
     test("breadcrumb with non-terminal stage: recovery context injected", async () => {
       await seedStage(tmpDir, "old-session", "executing", ".claude/plans/feat/02-impl.md");
       await seedBreadcrumb(tmpDir, "old-session", "executing", ".claude/plans/feat/02-impl.md");
-      const r = await runHook(SESSION_HOOK, {
-        session_id: "new-session",
-        cwd: tmpDir,
-      });
+      const r = await runHook(
+        SESSION_HOOK,
+        {
+          session_id: "new-session",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
-      expect(ctx).toMatch(/RECOVERY/);
+      expect(ctx).toMatch(/RECOVERY.*legacy breadcrumb/);
       expect(ctx).toMatch(/old-session/);
       expect(ctx).toMatch(/executing/);
-      expect(ctx).toMatch(/\.claude\/plans\/feat\/02-impl\.md/);
       expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
     });
 
     test("stale breadcrumb (deleted stage file): falls through to scan", async () => {
       await seedBreadcrumb(tmpDir, "gone-session", "planned", ".claude/plans/x.md");
       await seedStage(tmpDir, "orphan-session", "executing", ".claude/plans/y.md");
-      const r = await runHook(SESSION_HOOK, {
-        session_id: "new-session",
-        cwd: tmpDir,
-      });
+      const r = await runHook(
+        SESSION_HOOK,
+        {
+          session_id: "new-session",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
@@ -581,7 +662,6 @@ describe("SessionStart (session-start.sh)", () => {
     });
 
     test("multiple orphaned stage files: picks latest by started_at", async () => {
-      const { mkdir, writeFile } = await import("node:fs/promises");
       const dir = join(tmpDir, ".claude", "dp-cto");
       await mkdir(dir, { recursive: true });
       await writeFile(
@@ -602,10 +682,14 @@ describe("SessionStart (session-start.sh)", () => {
           history: ["executing"],
         }),
       );
-      const r = await runHook(SESSION_HOOK, {
-        session_id: "new-session",
-        cwd: tmpDir,
-      });
+      const r = await runHook(
+        SESSION_HOOK,
+        {
+          session_id: "new-session",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
@@ -618,10 +702,14 @@ describe("SessionStart (session-start.sh)", () => {
       await seedStage(tmpDir, "done-session-1", "idle");
       await seedStage(tmpDir, "done-session-2", "ended");
       await seedStage(tmpDir, "done-session-3", "complete");
-      const r = await runHook(SESSION_HOOK, {
-        session_id: "new-session",
-        cwd: tmpDir,
-      });
+      const r = await runHook(
+        SESSION_HOOK,
+        {
+          session_id: "new-session",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
@@ -630,10 +718,14 @@ describe("SessionStart (session-start.sh)", () => {
 
     test("single orphan with ended stage: no recovery context", async () => {
       await seedStage(tmpDir, "old-session", "ended");
-      const r = await runHook(SESSION_HOOK, {
-        session_id: "new-session",
-        cwd: tmpDir,
-      });
+      const r = await runHook(
+        SESSION_HOOK,
+        {
+          session_id: "new-session",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
@@ -642,56 +734,19 @@ describe("SessionStart (session-start.sh)", () => {
 
     test("scan skips stage file matching current session ID", async () => {
       await seedStage(tmpDir, "new-session", "executing", ".claude/plans/z.md");
-      const r = await runHook(SESSION_HOOK, {
-        session_id: "new-session",
-        cwd: tmpDir,
-      });
+      const r = await runHook(
+        SESSION_HOOK,
+        {
+          session_id: "new-session",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
       expect(ctx).not.toMatch(/RECOVERY/);
     });
-  });
-});
-
-// ─── SessionEnd ──────────────────────────────────────────────────────────────
-
-describe("SessionEnd (session-cleanup.sh)", () => {
-  const CLEANUP_HOOK = "session-cleanup.sh";
-
-  test("preserves stage file with ended status", async () => {
-    await seedStage(tmpDir, "test-session", "executing");
-    const r = await runHook(CLEANUP_HOOK, {
-      session_id: "test-session",
-      cwd: tmpDir,
-    });
-    expect(r.exitCode).toBe(0);
-    expect(await getStage(tmpDir, "test-session")).toBe("ended");
-  });
-
-  test("preserves plan_path and history through ended transition", async () => {
-    await seedStage(tmpDir, "test-session", "executing", ".claude/plans/feat/02-implementation.md");
-    const r = await runHook(CLEANUP_HOOK, {
-      session_id: "test-session",
-      cwd: tmpDir,
-    });
-    expect(r.exitCode).toBe(0);
-    const full = await getFullStage(tmpDir, "test-session");
-    expect(full).not.toBeNull();
-    expect(full!.stage).toBe("ended");
-    expect(full!.plan_path).toBe(".claude/plans/feat/02-implementation.md");
-    const history = full!.history as string[];
-    expect(history).toContain("executing");
-    expect(history).toContain("ended");
-  });
-
-  test("no-ops without pre-existing stage file", async () => {
-    const r = await runHook(CLEANUP_HOOK, {
-      session_id: "test-session",
-      cwd: tmpDir,
-    });
-    expect(r.exitCode).toBe(0);
-    expect(await getStage(tmpDir, "test-session")).toBe("idle");
   });
 });
 
@@ -818,34 +873,17 @@ describe("Research Validator (research-validator.sh)", () => {
   );
 });
 
-// ─── Breadcrumb Tracking: execute with missing breadcrumb ────────────────────
-
-describe("Breadcrumb Tracking: execute with missing breadcrumb", () => {
-  const hook = "stage-transition.sh";
-
-  test("execute without prior breadcrumb uses plan_path from stage file", async () => {
-    await seedStage(tmpDir, "test-session", "executing", ".claude/plans/feat/02-implementation.md");
-    await runHook(hook, skillInput("dp-cto:execute"));
-    expect(await breadcrumbExists(tmpDir)).toBe(true);
-    const raw = await getBreadcrumb(tmpDir);
-    const breadcrumb = JSON.parse(raw);
-    expect(breadcrumb.plan_path).toBe("");
-  });
-});
-
 // ─── jq-missing fail-open ──────────────────────────────────────────────────
 
 describe("jq-missing fail-open", () => {
   let jqFreePath: string;
 
   beforeEach(async () => {
-    const { mkdtemp, symlink } = await import("node:fs/promises");
     jqFreePath = await mkdtemp(join(tmpdir(), "no-jq-"));
     const bashPath = "/bin/bash";
     await symlink(bashPath, join(jqFreePath, "bash"));
     for (const bin of ["cat", "dirname", "basename", "tr", "grep", "tail", "mkdir"]) {
       try {
-        const { execFileSync } = await import("node:child_process");
         const realPath = execFileSync("which", [bin], { encoding: "utf-8" }).trim();
         if (realPath) await symlink(realPath, join(jqFreePath, bin));
       } catch {
@@ -892,7 +930,6 @@ describe("jq-missing fail-open", () => {
     "stage-transition.sh",
     "completion-gate.sh",
     "research-validator.sh",
-    "session-cleanup.sh",
   ])("%s exits 0 when jq is missing", async (hook) => {
     const r = await runHookWithoutJq(hook, {
       tool_name: "Skill",

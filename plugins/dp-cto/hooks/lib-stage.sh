@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Shared library for dp-cto stage state management.
+# Legacy library for dp-cto per-session stage file management. Retained for backward compat and recovery fallback. Primary state management is in lib-state.sh (beads-backed cache.json).
 # Source this file — no side effects, functions only.
 
 # Callers must export CWD before sourcing this file. Falls back to pwd if unset.
@@ -20,25 +20,6 @@ stage_file() {
   local session_id="$1"
   validate_session_id "$session_id" || return 1
   echo "$(stage_dir)/${session_id}.stage.json"
-}
-
-read_stage() {
-  local session_id="$1"
-  local file
-  file="$(stage_file "$session_id")"
-
-  if [ ! -f "$file" ]; then
-    echo "idle"
-    return 0
-  fi
-
-  local stage
-  stage=$(jq -r '.stage // empty' "$file" 2>/dev/null) || true
-  if [ -z "$stage" ]; then
-    echo "idle"
-    return 0
-  fi
-  echo "$stage"
 }
 
 write_stage() {
@@ -98,36 +79,6 @@ breadcrumb_file() {
   echo "$(stage_dir)/active.json"
 }
 
-write_breadcrumb() {
-  local session_id="$1"
-  local stage="$2"
-  local plan_path="${3:-}"
-  local cwd="${4:-}"
-  local file
-  file="$(breadcrumb_file)"
-  local dir
-  dir="$(stage_dir)"
-
-  mkdir -p "$dir"
-
-  local tmpfile
-  tmpfile=$(mktemp "${file}.tmp.XXXXXX")
-  chmod 600 "$tmpfile"
-
-  if ! jq -n \
-    --arg session_id "$session_id" \
-    --arg stage "$stage" \
-    --arg plan_path "$plan_path" \
-    --arg cwd "$cwd" \
-    '{session_id: $session_id, stage: $stage, plan_path: $plan_path, cwd: $cwd}' \
-    > "$tmpfile" 2>/dev/null; then
-    rm -f "$tmpfile"
-    return 1
-  fi
-
-  mv -f "$tmpfile" "$file"
-}
-
 read_breadcrumb() {
   local file
   file="$(breadcrumb_file)"
@@ -144,10 +95,4 @@ read_breadcrumb() {
     return 0
   fi
   echo "$content"
-}
-
-clear_breadcrumb() {
-  local file
-  file="$(breadcrumb_file)"
-  rm -f "$file"
 }

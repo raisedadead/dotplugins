@@ -1,8 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { createTmpDir, removeTmpDir, runHook } from "./helpers";
+import { createTmpDir, removeTmpDir, runHook, runShell, createNoBdPath } from "./helpers";
+
+// ─── Beads Availability Detection ───────────────────────────────────────────
 
 let tmpDir: string;
 
@@ -13,32 +14,6 @@ beforeEach(async () => {
 afterEach(async () => {
   await removeTmpDir(tmpDir);
 });
-
-function runShell(
-  script: string,
-  env: Record<string, string> = {},
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  return new Promise((resolve) => {
-    const proc = spawn("bash", ["-c", script], {
-      stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...env },
-    });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.on("data", (d: Buffer) => {
-      stdout += d.toString();
-    });
-    proc.stderr.on("data", (d: Buffer) => {
-      stderr += d.toString();
-    });
-    proc.stdin.end();
-    proc.on("close", (code) => {
-      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code ?? 1 });
-    });
-  });
-}
-
-// ─── Beads Availability Detection ───────────────────────────────────────────
 
 describe("Beads availability detection (session-start.sh)", () => {
   test("no bd CLI and no .beads dir: context starts with enforcement (no beads prepended)", async () => {
@@ -55,14 +30,23 @@ describe("Beads availability detection (session-start.sh)", () => {
 
   test(".beads directory exists but no bd CLI: no beads context prepended", async () => {
     await mkdir(join(tmpDir, ".beads"), { recursive: true });
-    const r = await runHook("session-start.sh", {
-      session_id: "test-session",
-      cwd: tmpDir,
-    });
-    expect(r.exitCode).toBe(0);
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
-    expect(ctx.trimStart().startsWith("<EXTREMELY_IMPORTANT>")).toBe(true);
+    const noBdDir = await createNoBdPath();
+    try {
+      const r = await runHook(
+        "session-start.sh",
+        {
+          session_id: "test-session",
+          cwd: tmpDir,
+        },
+        { PATH: noBdDir },
+      );
+      expect(r.exitCode).toBe(0);
+      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
+        ?.additionalContext as string;
+      expect(ctx.trimStart().startsWith("<EXTREMELY_IMPORTANT>")).toBe(true);
+    } finally {
+      await rm(noBdDir, { recursive: true, force: true });
+    }
   });
 
   test("bd CLI available but no .beads directory: no beads context prepended", async () => {

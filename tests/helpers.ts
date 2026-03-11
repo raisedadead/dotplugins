@@ -1,5 +1,4 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
 import { mkdir, writeFile, readFile, rm, mkdtemp } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
@@ -15,10 +14,15 @@ export interface HookResult {
   json: Record<string, unknown> | null;
 }
 
-export function runHook(script: string, input: Record<string, unknown>): Promise<HookResult> {
+export function runHook(
+  script: string,
+  input: Record<string, unknown>,
+  env?: Record<string, string>,
+): Promise<HookResult> {
   return new Promise((resolve) => {
     const proc = spawn("bash", [join(HOOK_DIR, script)], {
       stdio: ["pipe", "pipe", "pipe"],
+      env: env ? { ...process.env, ...env } : undefined,
     });
 
     let stdout = "";
@@ -51,6 +55,30 @@ export function runHook(script: string, input: Record<string, unknown>): Promise
   });
 }
 
+export function runShell(
+  script: string,
+  env: Record<string, string> = {},
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  return new Promise((resolve) => {
+    const proc = spawn("bash", ["-c", script], {
+      stdio: ["pipe", "pipe", "pipe"],
+      env: { ...process.env, ...env },
+    });
+    let stdout = "";
+    let stderr = "";
+    proc.stdout.on("data", (d: Buffer) => {
+      stdout += d.toString();
+    });
+    proc.stderr.on("data", (d: Buffer) => {
+      stderr += d.toString();
+    });
+    proc.stdin.end();
+    proc.on("close", (code) => {
+      resolve({ stdout: stdout.trim(), stderr: stderr.trim(), exitCode: code ?? 1 });
+    });
+  });
+}
+
 export async function createTmpDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "dp-cto-test-"));
 }
@@ -76,12 +104,6 @@ export async function seedStage(
   await writeFile(join(dir, `${sessionId}.stage.json`), JSON.stringify(data));
 }
 
-export async function seedCorruptStage(tmpDir: string, sessionId: string): Promise<void> {
-  const dir = join(tmpDir, ".claude", "dp-cto");
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${sessionId}.stage.json`), "NOT VALID JSON{{{");
-}
-
 export async function getStage(tmpDir: string, sessionId: string): Promise<string> {
   try {
     const raw = await readFile(
@@ -95,34 +117,6 @@ export async function getStage(tmpDir: string, sessionId: string): Promise<strin
   }
 }
 
-export async function getPlanPath(tmpDir: string, sessionId: string): Promise<string> {
-  try {
-    const raw = await readFile(
-      join(tmpDir, ".claude", "dp-cto", `${sessionId}.stage.json`),
-      "utf-8",
-    );
-    const data = JSON.parse(raw);
-    return data.plan_path ?? "";
-  } catch {
-    return "";
-  }
-}
-
-export async function getFullStage(
-  tmpDir: string,
-  sessionId: string,
-): Promise<Record<string, unknown> | null> {
-  try {
-    const raw = await readFile(
-      join(tmpDir, ".claude", "dp-cto", `${sessionId}.stage.json`),
-      "utf-8",
-    );
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return null;
-  }
-}
-
 export async function listStageDir(tmpDir: string): Promise<string[]> {
   const { readdir } = await import("node:fs/promises");
   try {
@@ -130,20 +124,6 @@ export async function listStageDir(tmpDir: string): Promise<string[]> {
   } catch {
     return [];
   }
-}
-
-export async function getBreadcrumb(tmpDir: string): Promise<string> {
-  try {
-    const raw = await readFile(join(tmpDir, ".claude", "dp-cto", "active.json"), "utf-8");
-    JSON.parse(raw);
-    return raw;
-  } catch {
-    return "";
-  }
-}
-
-export async function breadcrumbExists(tmpDir: string): Promise<boolean> {
-  return existsSync(join(tmpDir, ".claude", "dp-cto", "active.json"));
 }
 
 export async function seedBreadcrumb(
@@ -158,14 +138,87 @@ export async function seedBreadcrumb(
   await writeFile(join(dir, "active.json"), JSON.stringify(data));
 }
 
-export async function seedIndex(tmpDir: string, planPath: string): Promise<void> {
-  const dir = join(tmpDir, ".claude", "plans");
-  await mkdir(dir, { recursive: true });
-  const content = `# Plan Index
+// ─── Cache-based state helpers (v4.0 lib-state.sh) ──────────────────────────
 
-| #  | Phase | Path | Status |
-|----|-------|------|--------|
-| 02  | [Implementation](${planPath}) | Implementation | Awaiting execution |
-`;
-  await writeFile(join(dir, "_index.md"), content);
+export async function seedCache(tmpDir: string, stage: string, activeEpic = ""): Promise<void> {
+  const dir = join(tmpDir, ".claude", "dp-cto");
+  await mkdir(dir, { recursive: true });
+  const data = {
+    active_epic: activeEpic,
+    stage,
+    sprint: "",
+    suspended: [],
+    synced_at: "2026-01-01T00:00:00Z",
+  };
+  await writeFile(join(dir, "cache.json"), JSON.stringify(data));
+}
+
+export async function seedCorruptCache(tmpDir: string): Promise<void> {
+  const dir = join(tmpDir, ".claude", "dp-cto");
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, "cache.json"), "NOT VALID JSON{{{");
+}
+
+export async function getCacheStage(tmpDir: string): Promise<string> {
+  try {
+    const raw = await readFile(join(tmpDir, ".claude", "dp-cto", "cache.json"), "utf-8");
+    const data = JSON.parse(raw);
+    return data.stage ?? "idle";
+  } catch {
+    return "idle";
+  }
+}
+
+export async function seedBeadsDir(tmpDir: string): Promise<void> {
+  await mkdir(join(tmpDir, ".beads"), { recursive: true });
+}
+
+export async function createMockBd(tmpDir: string): Promise<string> {
+  const binDir = join(tmpDir, ".mock-bin");
+  await mkdir(binDir, { recursive: true });
+  const script = `#!/bin/bash
+case "$1" in
+  query) echo "[]" ;;
+  prime) echo "" ;;
+  set-state) exit 0 ;;
+  show) echo "{}" ;;
+  *) exit 1 ;;
+esac`;
+  const bdPath = join(binDir, "bd");
+  await writeFile(bdPath, script, { mode: 0o755 });
+  return `${binDir}:${process.env.PATH}`;
+}
+
+export async function createNoBdPath(): Promise<string> {
+  const { execFileSync } = await import("node:child_process");
+  const { mkdtemp, symlink } = await import("node:fs/promises");
+  const dir = await mkdtemp(join(tmpdir(), "no-bd-"));
+  const bins = [
+    "bash",
+    "jq",
+    "cat",
+    "dirname",
+    "basename",
+    "tr",
+    "grep",
+    "tail",
+    "mkdir",
+    "chmod",
+    "mktemp",
+    "mv",
+    "rm",
+    "date",
+    "sed",
+    "head",
+    "printf",
+  ];
+  for (const bin of bins) {
+    try {
+      const realPath = execFileSync("which", [bin], { encoding: "utf-8" }).trim();
+      if (realPath) await symlink(realPath, join(dir, bin));
+    } catch {
+      /* skip if not found */
+    }
+  }
+  return dir;
 }

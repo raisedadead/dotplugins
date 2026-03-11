@@ -26,7 +26,7 @@ If you catch yourself reading code to review it, STOP. Spawn a specialist agent 
 
 ## Stage Enforcement
 
-The stage machine hook ensures this skill runs only from `executing` (auto-chain after execute) or `complete` (standalone re-polish). The hook transitions the stage to `polishing` on entry.
+The stage machine hook ensures this skill runs only from `executing` (auto-chain after execute) or `complete` (standalone re-polish). The hook sets `dp-cto=polishing` on the epic on entry. On completion, the hook sets `dp-cto=complete` on the epic.
 
 ## Review Lenses
 
@@ -75,7 +75,7 @@ Show the user the selected lenses and detected quality-gate command, then procee
 
 ## Step 1: Gather Scope
 
-1. Read the active plan path from the stage state file (`.claude/dp-cto/*.stage.json`). If no stage file exists or the plan path is empty, skip this step — the git diff in step 2 provides sufficient scope.
+1. Read the active epic from the local cache (`.claude/dp-cto/cache.json`). If no active epic is found, check `bd query` for epics with a `dp-cto:polishing` label. If still not found, skip this step — the git diff in step 2 provides sufficient scope.
 2. Run `git diff main...HEAD --name-only` to get all files changed in this cycle
    - If no diff against main (e.g., standalone invocation), use `git diff HEAD~5 --name-only` as fallback
 3. Group files by directory/module for targeted review
@@ -125,8 +125,16 @@ You are a specialist code reviewer focused EXCLUSIVELY on: {LENS_NAME}
 
 1. Wait for all review agents to complete
 2. Parse each agent's output for `[CRITICAL]`, `[WARNING]`, and `[SUGGESTION]` findings
-3. Deduplicate: if two lenses flag the same file:line for overlapping reasons, keep the higher-severity one
-4. Present a consolidated findings table to the user:
+3. **Track each lens result** — record findings per lens on the epic:
+
+```bash
+bd comments add {epic-id} "review: lens={lens} findings={N} critical={N} warning={N} suggestion={N}"
+```
+
+Where `{lens}` is one of: `security`, `simplification`, `test-gaps`, `linting`, `performance`, `docs`.
+
+4. Deduplicate: if two lenses flag the same file:line for overlapping reasons, keep the higher-severity one
+5. Present a consolidated findings table to the user:
 
 ```
 ## Polish Findings
@@ -144,7 +152,7 @@ You are a specialist code reviewer focused EXCLUSIVELY on: {LENS_NAME}
   {description}
 ```
 
-5. If zero findings across all lenses: say "Clean bill of health. No issues found." and skip to Step 5.
+6. If zero findings across all lenses: say "Clean bill of health. No issues found." and skip to Step 5.
 
 ## Step 4: Fix Round
 
@@ -162,6 +170,12 @@ For each finding (or group of findings in the same file), spawn a one-shot `gene
 - Include the constraint: "Run the project's test command after your fix to verify nothing broke."
 
 Run fix agents in parallel where they touch different files. Sequential where they touch the same file.
+
+After each lens's fixes complete, **track the fix outcome** on the epic:
+
+```bash
+bd comments add {epic-id} "fix: lens={lens} items_fixed={N} items_remaining={N}"
+```
 
 ### 4c: Quality Gate
 

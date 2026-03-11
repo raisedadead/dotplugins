@@ -181,7 +181,11 @@ const EXPECTED_SKILLS = [
   "verify-done",
   "review",
   "sweep",
-  "reset",
+  "cleanup",
+  "board",
+  "sprint",
+  "interrupt",
+  "resume",
 ];
 
 describe("Skill frontmatter", () => {

@@ -26,7 +26,7 @@ If you catch yourself writing application code, STOP. You are delegating, not co
 
 ## Plan Enforcement
 
-The stage machine hook enforces that the planning stage has been completed before this skill runs. If you see this skill, `/dp-cto:start` has already run.
+The stage machine hook enforces that the planning stage has been completed before this skill runs. State is tracked on the beads epic (via `dp-cto=planned` label). If you see this skill, `/dp-cto:start` has already run and the active epic is in the local cache.
 
 ## Step 1: Read Beads Molecule and Classify
 
@@ -35,6 +35,8 @@ The stage machine hook enforces that the planning stage has been completed befor
 ```bash
 bd ready --json
 ```
+
+State is tracked on the epic. If no active epic is found in the cache, check `bd query` for suspended or planned epics (e.g., `bd query "label=dp-cto:planned" --json`).
 
 2. For the full task list and dependency graph:
 
@@ -67,17 +69,26 @@ bd show {task-id} --json
 
 The `description` field contains the complete agent prompt written by `/dp-cto:start`. Pass it verbatim to the `Agent` tool with `run_in_background: true`.
 
-3. For `[subagent:isolated]` tasks, add `isolation: "worktree"` to the Agent call
+3. **Track the dispatch** — record when the agent is spawned:
 
-Batch in rounds of 3-4 (preserve anti-pattern rule).
+```bash
+bd comments add {task-id} "dispatch: role=implementer type=subagent started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+For `[subagent:isolated]` tasks, use `type=subagent:isolated` and add `isolation: "worktree"` to the Agent call.
+
+4. Batch in rounds of 3-4 (preserve anti-pattern rule).
 
 The agent prompt is pre-built in the beads issue description. Do NOT modify it — pass it verbatim.
 
-CTO is auto-notified when background agents complete. After each agent completes, mark it done:
+CTO is auto-notified when background agents complete. After each agent completes, **track the outcome** and mark it done:
 
 ```bash
+bd comments add {task-id} "outcome: result=success iterations=1"
 bd close {task-id}
 ```
+
+If the agent failed, record `result=failure` instead of `result=success`.
 
 Then re-query `bd ready --json` to discover newly unblocked tasks and dispatch the next round.
 
@@ -91,7 +102,19 @@ For each `[iterative]` task:
 
 1. Mark in progress: `bd update {task-id} --status in-progress`
 2. Extract the agent prompt from `bd show {task-id} --json` (the `description` field)
-3. Dispatch as a `[subagent]` task first (same as Step 2 — pass the prompt verbatim)
+3. **Track the dispatch** — record when the agent is spawned:
+
+```bash
+bd comments add {task-id} "dispatch: role=implementer type=iterative started=$(date -u +%Y-%m-%dT%H:%M:%SZ) max_iterations={N}"
+```
+
+4. Dispatch as a `[subagent]` task first (same as Step 2 — pass the prompt verbatim)
+
+After completion, **track the outcome**:
+
+```bash
+bd comments add {task-id} "outcome: result={success|failure} iterations={N}"
+```
 
 If it fails the quality gate after 2 fix rounds in Step 5, mark it done with `bd close {task-id}`, report the failure to the user, and suggest they invoke `/dp-cto:ralph` manually.
 
@@ -129,7 +152,19 @@ For each completed task (from any dispatch type), run a two-stage review:
 
 ### Review by dispatch type
 
-**Subagent tasks**: CTO reads the returned result. Spawn a foreground review Agent with the result + file diffs. If issues found, spawn a fresh fix Agent (foreground) with the review feedback + original task spec + file scope. Re-review after fix. Max 2 fix rounds, then report the failure to the user and suggest they invoke `/dp-cto:ralph` manually.
+**Subagent tasks**: CTO reads the returned result. **Track the review dispatch**:
+
+```bash
+bd comments add {task-id} "dispatch: role=reviewer type=subagent started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+Spawn a foreground review Agent with the result + file diffs. After the review completes, **track the review outcome**:
+
+```bash
+bd comments add {task-id} "outcome: result={pass|fail} issues_found={N}"
+```
+
+If issues found, spawn a fresh fix Agent (foreground) with the review feedback + original task spec + file scope. Re-review after fix. Max 2 fix rounds, then report the failure to the user and suggest they invoke `/dp-cto:ralph` manually.
 
 **Iterative tasks**: Dispatched as subagents (Step 3). Same review process as subagent tasks above.
 
@@ -147,7 +182,7 @@ NEVER proceed with open review issues.
 ## Step 7: Cleanup and Handoff
 
 1. If Step 4 ran (collaborative tasks), verify the team was cleaned up
-2. The stage machine transitions to `polishing` automatically. The user invokes `/dp-cto:polish` to run multi-perspective review.
+2. The hook sets `dp-cto=polishing` on the epic automatically. The user invokes `/dp-cto:polish` to run multi-perspective review.
 
 ## NEVER
 
