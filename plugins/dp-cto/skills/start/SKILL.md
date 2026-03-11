@@ -83,6 +83,8 @@ Do a **YAGNI check**: list anything in the design that could be deferred to a la
 
 ## Step 5: Create Beads Molecule
 
+**Pre-check:** If `bd create` fails with "no beads database found", initialize with `bd init --stealth`. Never run `bd init` without `--stealth` — the global gitignore handles `.beads/` and `.dolt/` exclusions.
+
 ### 5a: Create Epic with Analysis
 
 Create a beads epic with the analysis as its body, then create child tasks.
