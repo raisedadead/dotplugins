@@ -10,23 +10,21 @@ for f in .claude-plugin/marketplace.json plugins/*/.claude-plugin/plugin.json; d
     fi
 done
 
-# Ensure all plugin versions match (unified versioning)
-EXPECTED=$(jq -r '.plugins[0].version' .claude-plugin/marketplace.json)
-for f in .claude-plugin/marketplace.json; do
-    for v in $(jq -r '.plugins[].version' "$f"); do
-        if [ "$v" != "$EXPECTED" ]; then
-            echo "FAIL: version mismatch in marketplace.json: $v != $EXPECTED"
-            ERRORS=$((ERRORS + 1))
-        fi
-    done
-done
-for f in plugins/*/.claude-plugin/plugin.json; do
-    pv=$(jq -r '.version // empty' "$f")
-    if [ -z "$pv" ]; then
-        echo "FAIL: $f missing version field"
+# Ensure each plugin's version in marketplace.json matches its own plugin.json
+for name in $(jq -r '.plugins[].name' .claude-plugin/marketplace.json); do
+    marketplace_version=$(jq -r --arg n "$name" '.plugins[] | select(.name == $n) | .version' .claude-plugin/marketplace.json)
+    plugin_json="plugins/${name}/.claude-plugin/plugin.json"
+    if [ ! -f "$plugin_json" ]; then
+        echo "FAIL: $plugin_json not found for marketplace plugin '$name'"
         ERRORS=$((ERRORS + 1))
-    elif [ "$pv" != "$EXPECTED" ]; then
-        echo "FAIL: $f version ($pv) != expected ($EXPECTED)"
+        continue
+    fi
+    pv=$(jq -r '.version // empty' "$plugin_json")
+    if [ -z "$pv" ]; then
+        echo "FAIL: $plugin_json missing version field"
+        ERRORS=$((ERRORS + 1))
+    elif [ "$pv" != "$marketplace_version" ]; then
+        echo "FAIL: $plugin_json version ($pv) != marketplace.json version ($marketplace_version) for plugin '$name'"
         ERRORS=$((ERRORS + 1))
     fi
 done
@@ -74,13 +72,13 @@ for hj in plugins/*/hooks/hooks.json; do
         ERRORS=$((ERRORS + 1))
     fi
     plugin_dir=$(dirname "$(dirname "$hj")")
-    for cmd in $(jq -r '.. | .command? // empty' "$hj"); do
+    while IFS= read -r cmd; do
         resolved="${cmd//\$\{CLAUDE_PLUGIN_ROOT\}/$plugin_dir}"
         if [ ! -f "$resolved" ]; then
             echo "FAIL: $hj references missing script: $cmd"
             ERRORS=$((ERRORS + 1))
         fi
-    done
+    done < <(jq -r '.. | .command? // empty' "$hj")
 done
 
 # Official Claude plugin validator

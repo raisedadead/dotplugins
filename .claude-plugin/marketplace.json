@@ -29,6 +29,23 @@
         "beads",
         "harness-engineering"
       ]
+    },
+    {
+      "name": "dp-spec",
+      "source": "./plugins/dp-spec",
+      "version": "1.0.0",
+      "description": "Spec authoring pipeline — structured discovery, brainstorming, research, tiered document authoring (ADR/RFC/PRD), adversarial review, and agent-ready handoff.",
+      "category": "productivity",
+      "tags": [
+        "spec-authoring",
+        "rfc",
+        "prd",
+        "adr",
+        "architecture",
+        "adversarial-review",
+        "planning",
+        "handoff"
+      ]
     }
   ]
 }

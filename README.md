@@ -2,16 +2,24 @@
 
 A plugin marketplace for [Claude Code](https://docs.anthropic.com/en/docs/claude-code).
 
-## dp-cto — CTO Orchestration Plugin
-
-dp-cto turns Claude Code into a CTO that plans features, dispatches agents to build them, reviews their work, and polishes the result.
+| Plugin      | Purpose                                                               |
+| ----------- | --------------------------------------------------------------------- |
+| **dp-cto**  | CTO orchestration — plan features, dispatch agents, polish code       |
+| **dp-spec** | Spec authoring — discovery, research, tiered docs, adversarial review |
 
 ### Install
 
 ```bash
 claude plugin marketplace add raisedadead/dotplugins
 claude plugin install dp-cto@dotplugins
+claude plugin install dp-spec@dotplugins
 ```
+
+---
+
+## dp-cto — CTO Orchestration Plugin
+
+dp-cto turns Claude Code into a CTO that plans features, dispatches agents to build them, reviews their work, and polishes the result.
 
 Requires: `jq` on PATH. Optional: `bd` CLI (beads) for structured task scheduling.
 
@@ -75,7 +83,59 @@ You are the CTO. You never write code or review code yourself. You:
 
 ---
 
-## Architecture
+## dp-spec — Spec Authoring Pipeline
+
+dp-spec turns Claude Code into a principal engineer that guides you through structured discovery, research, tiered document authoring (ADR/RFC/PRD), adversarial review, and agent-ready handoff.
+
+Requires: `jq` on PATH. Optional: `bd` CLI (beads) for task decomposition in handoff.
+
+### The Pipeline (6 commands)
+
+```
+/dp-spec:discover   →  Gathers context, asks focused questions, builds shared
+                        understanding of the project. No solutions yet.
+
+/dp-spec:brainstorm →  Explores approaches, compares architectures, refines
+                        scope and tradeoffs with the user.
+
+/dp-spec:research   →  Validates decisions with evidence — prior art, feasibility,
+                        ecosystem analysis. Also works standalone.
+
+/dp-spec:draft      →  Authors a structured spec (ADR, RFC, or PRD) section by
+                        section, pausing for user review at each group.
+
+/dp-spec:challenge  →  Spawns 5 parallel devil agents (scale, security, ops,
+                        simplicity, dependencies) to stress-test the draft.
+
+/dp-spec:handoff    →  Converts the approved spec into agent-ready tasks —
+                        a beads molecule for dp-cto:execute or markdown breakdown.
+```
+
+```
+                   context       approaches      evidence
+                   gathered       explored       validated
+  /dp-spec:discover ───> /dp-spec:brainstorm ───> /dp-spec:research
+                                                        │
+                    ┌───────────────────────────────────┘
+                    │   spec         stress-         tasks
+                    v  drafted       tested         generated
+              /dp-spec:draft ───> /dp-spec:challenge ───> /dp-spec:handoff
+                                                               │
+                                                               v
+                                                      /dp-cto:execute
+```
+
+### Shortcut
+
+`/dp-spec:plan` chains all 6 phases automatically — use it instead of invoking skills individually.
+
+### Integration
+
+Handoff produces agent-ready output that feeds directly into `/dp-cto:execute`. The two plugins form a complete spec-to-implementation pipeline.
+
+---
+
+## dp-cto Architecture
 
 ### Adaptive Dispatch
 
@@ -193,30 +253,54 @@ dotplugins/
 ├── .claude-plugin/
 │   └── marketplace.json          # Marketplace registry (plugins + versions)
 ├── plugins/
-│   └── dp-cto/
+│   ├── dp-cto/
+│   │   ├── .claude-plugin/
+│   │   │   └── plugin.json       # Plugin metadata + version
+│   │   ├── hooks/
+│   │   │   ├── hooks.json        # Hook definitions
+│   │   │   ├── session-start.sh  # Injects enforcement context + beads prime
+│   │   │   ├── session-cleanup.sh
+│   │   │   ├── intercept-orchestration.sh  # PreToolUse: stage enforcement + skill filtering
+│   │   │   ├── stage-transition.sh         # PostToolUse: stage machine advances
+│   │   │   ├── completion-gate.sh          # PostToolUse: completion claim verification
+│   │   │   ├── lib-stage.sh               # Shared stage read/write helpers
+│   │   │   └── research-validator.sh      # PostToolUse: verification checklists
+│   │   └── skills/
+│   │       ├── start/SKILL.md
+│   │       ├── execute/SKILL.md
+│   │       ├── ralph/SKILL.md
+│   │       ├── ralph-cancel/SKILL.md
+│   │       ├── polish/SKILL.md
+│   │       ├── verify/SKILL.md
+│   │       ├── tdd/SKILL.md
+│   │       ├── debug/SKILL.md
+│   │       ├── verify-done/SKILL.md
+│   │       ├── review/SKILL.md
+│   │       └── sweep/SKILL.md
+│   └── dp-spec/
 │       ├── .claude-plugin/
 │       │   └── plugin.json       # Plugin metadata + version
 │       ├── hooks/
 │       │   ├── hooks.json        # Hook definitions
-│       │   ├── session-start.sh  # Injects enforcement context + beads prime
+│       │   ├── session-start.sh
 │       │   ├── session-cleanup.sh
-│       │   ├── intercept-orchestration.sh  # PreToolUse: stage enforcement + skill filtering
-│       │   ├── stage-transition.sh         # PostToolUse: stage machine advances
-│       │   ├── completion-gate.sh          # PostToolUse: completion claim verification
+│       │   ├── intercept-skills.sh        # PreToolUse: stage enforcement
+│       │   ├── stage-transition.sh        # PostToolUse: stage machine advances
 │       │   ├── lib-stage.sh               # Shared stage read/write helpers
 │       │   └── research-validator.sh      # PostToolUse: verification checklists
-│       └── skills/
-│           ├── start/SKILL.md
-│           ├── execute/SKILL.md
-│           ├── ralph/SKILL.md
-│           ├── ralph-cancel/SKILL.md
-│           ├── polish/SKILL.md
-│           ├── verify/SKILL.md
-│           ├── tdd/SKILL.md
-│           ├── debug/SKILL.md
-│           ├── verify-done/SKILL.md
-│           ├── review/SKILL.md
-│           └── sweep/SKILL.md
+│       ├── skills/
+│       │   ├── plan/SKILL.md
+│       │   ├── discover/SKILL.md
+│       │   ├── brainstorm/SKILL.md
+│       │   ├── research/SKILL.md
+│       │   ├── draft/SKILL.md
+│       │   ├── challenge/SKILL.md
+│       │   └── handoff/SKILL.md
+│       └── references/
+│           ├── adr-template.md
+│           ├── rfc-template.md
+│           ├── prd-template.md
+│           └── task-breakdown-template.md
 ├── tests/                        # Vitest hook contract + schema tests
 ├── scripts/
 │   ├── validate.sh               # Full plugin validation suite
@@ -237,7 +321,9 @@ pnpm run validate    # check + shell-based plugin validation
 ### Releasing
 
 ```bash
-pnpm run release -- patch   # patch | minor | major | x.y.z
+pnpm run release -- patch              # bump all plugins
+pnpm run release -- dp-cto patch       # bump dp-cto only
+pnpm run release -- dp-spec patch      # bump dp-spec only
 ```
 
 Bumps version in `marketplace.json` and `plugin.json`, validates, commits, and pushes. Requires clean working tree on `main`.

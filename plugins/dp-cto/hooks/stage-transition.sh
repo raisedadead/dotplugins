@@ -28,6 +28,7 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 export CWD="${CWD_INPUT:-$(pwd)}"
+# shellcheck source=lib-stage.sh
 source "$(dirname "$0")/lib-stage.sh"
 
 SKILL="${SKILL_NAME#dp-cto:}"

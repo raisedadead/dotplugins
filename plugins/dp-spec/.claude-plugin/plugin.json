@@ -1,0 +1,20 @@
+{
+  "name": "dp-spec",
+  "version": "1.0.0",
+  "description": "Spec authoring pipeline — structured discovery, brainstorming, research, tiered document authoring (ADR/RFC/PRD), adversarial review, and agent-ready handoff.",
+  "author": {
+    "name": "Mrugesh",
+    "email": "m@raisedadead.com"
+  },
+  "repository": "https://github.com/raisedadead/dotplugins",
+  "keywords": [
+    "spec",
+    "rfc",
+    "prd",
+    "adr",
+    "architecture",
+    "planning",
+    "adversarial-review",
+    "handoff"
+  ]
+}

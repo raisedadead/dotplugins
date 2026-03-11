@@ -21,6 +21,7 @@ if [ -z "$CWD" ] || [ ! -d "$CWD" ]; then
 fi
 export CWD
 
+# shellcheck source=lib-stage.sh
 source "$(dirname "$0")/lib-stage.sh"
 
 if [ -n "$SESSION_ID" ]; then

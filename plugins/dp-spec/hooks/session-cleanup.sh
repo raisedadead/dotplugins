@@ -19,7 +19,7 @@ export CWD
 # shellcheck source=lib-stage.sh
 source "$(dirname "$0")/lib-stage.sh"
 
-STAGE_FILE="$(stage_file "$SESSION_ID")"
+STAGE_FILE="$(stage_file "$SESSION_ID" 2>/dev/null)" || exit 0
 if [ -f "$STAGE_FILE" ]; then
-  write_stage "$SESSION_ID" "ended" ""
+  write_stage "$SESSION_ID" "ended"
 fi

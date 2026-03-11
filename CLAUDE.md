@@ -4,24 +4,27 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Personal Claude Code plugin marketplace (monorepo). One plugin:
+Personal Claude Code plugin marketplace (monorepo). Two plugins:
 
-| Plugin     | Runtime         | Category       | Purpose                                                                                                      |
-| ---------- | --------------- | -------------- | ------------------------------------------------------------------------------------------------------------ |
-| **dp-cto** | Claude Code CLI | `productivity` | CTO orchestration with beads-based planning, native quality skills, iterative loops, and research validation |
+| Plugin      | Runtime         | Category       | Purpose                                                                                                                                                       |
+| ----------- | --------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **dp-cto**  | Claude Code CLI | `productivity` | CTO orchestration with beads-based planning, native quality skills, iterative loops, and research validation                                                  |
+| **dp-spec** | Claude Code CLI | `productivity` | Spec authoring pipeline — structured discovery, brainstorming, research, tiered document authoring (ADR/RFC/PRD), adversarial review, and agent-ready handoff |
 
 ## Commands
 
 Uses `pnpm` scripts with `turbo` for parallel task orchestration:
 
 ```bash
-pnpm test                   # run vitest hook contract + schema tests
-pnpm run lint               # oxlint on tests/
-pnpm run fmt:check          # oxfmt formatting check
-pnpm run check              # turbo: test + lint + fmt:check in parallel
-pnpm run validate           # check + shell-based plugin validation (scripts/validate.sh)
-pnpm run release -- patch   # release: patch|minor|major|x.y.z (scripts/release.sh)
-pnpm run version            # show current plugin version from marketplace.json
+pnpm test                              # run vitest hook contract + schema tests
+pnpm run lint                          # oxlint on tests/
+pnpm run fmt:check                     # oxfmt formatting check
+pnpm run check                         # turbo: test + lint + fmt:check in parallel
+pnpm run validate                      # check + shell-based plugin validation (scripts/validate.sh)
+pnpm run release -- patch              # release all plugins: patch|minor|major|x.y.z
+pnpm run release -- dp-spec patch      # release single plugin: <plugin-name> <bump>
+pnpm run release -- all patch          # explicit all-plugins release (same as bare bump)
+pnpm run version                       # show current plugin version from marketplace.json
 ```
 
 No build step. Plugins are plain Markdown skills + shell hooks.
@@ -57,6 +60,30 @@ plugins/
     skills/verify-done/SKILL.md    <- /dp-cto:verify-done gate function, evidence-before-claims
     skills/review/SKILL.md         <- /dp-cto:review dispatch review agent + process feedback
     skills/sweep/SKILL.md          <- /dp-cto:sweep entropy management and pattern drift detection
+  dp-spec/                          <- Spec authoring pipeline plugin
+    .claude-plugin/plugin.json     <- plugin metadata + version (synced from marketplace.json)
+    hooks/
+      hooks.json                   <- hook definitions (SessionStart, PreToolUse, PostToolUse, SessionEnd)
+      session-start.sh             <- injects enforcement context + session recovery on start
+      intercept-skills.sh          <- PreToolUse hook: stage enforcement for dp-spec skills
+      research-validator.sh        <- PostToolUse hook: injects verification checklists
+                                      after WebSearch, WebFetch, and MCP tool calls
+      stage-transition.sh          <- PostToolUse hook: tracks stage transitions after
+                                      dp-spec skill execution
+      session-cleanup.sh           <- SessionEnd hook: preserves stage files with ended status
+      lib-stage.sh                 <- shared library for stage file read/write/breadcrumb ops
+    skills/discover/SKILL.md       <- /dp-spec:discover project discovery, context gathering
+    skills/brainstorm/SKILL.md     <- /dp-spec:brainstorm iterative requirements and approach exploration
+    skills/research/SKILL.md       <- /dp-spec:research evidence-based validation (pipeline + standalone)
+    skills/draft/SKILL.md          <- /dp-spec:draft tiered document authoring (ADR/RFC/PRD)
+    skills/challenge/SKILL.md      <- /dp-spec:challenge adversarial review with 5 devil agents
+    skills/handoff/SKILL.md        <- /dp-spec:handoff spec-to-tasks decomposition (beads or markdown)
+    skills/plan/                   <- /dp-spec:plan shortcut (runs discover + brainstorm)
+    references/
+      adr-template.md              <- ADR document template
+      rfc-template.md              <- RFC document template
+      prd-template.md              <- PRD document template
+      task-breakdown-template.md   <- Implementation task breakdown template
 ```
 
 ### Key design: dp-cto hook system
@@ -186,22 +213,106 @@ idle ──→ planning ──→ planned ──→ executing ──→ polishin
 
 Side-effect-free skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`) and `ralph-cancel` are allowed from any stage.
 
+### Key design: dp-spec hook system
+
+The dp-spec plugin uses a four-hook architecture matching all lifecycle events:
+
+**PreToolUse** (`intercept-skills.sh`) — dp-spec skill stage enforcement:
+
+- Only intercepts `dp-spec:*` skills — everything else passes silently
+- Validates the current workflow stage allows the requested skill (e.g., `draft` requires `researched` stage)
+- `dp-spec:research` with `--standalone` flag bypasses stage enforcement (quality skill mode)
+- `dp-spec:plan` is treated identically to `dp-spec:discover` (shortcut)
+- Writes pre-execution transient stages on allowed transitions (e.g., `discovering`, `brainstorming`, `drafting`)
+- Denied skills return a `permissionDecision: "deny"` with a reason explaining the required next step
+
+**PostToolUse** — two hooks:
+
+- `research-validator.sh` — fires on `WebSearch|WebFetch|mcp__.*`, injects verification checklists (same pattern as dp-cto)
+- `stage-transition.sh` — fires on `Skill`, advances dp-spec stage machine after skill completion. Standalone research (`--standalone`) skips stage transition.
+
+**SessionStart** (`session-start.sh`) — initializes session to `idle` stage, injects enforcement context listing all dp-spec skills and workflow order, detects recoverable prior sessions via breadcrumb file (fast path) or stage file scan (fallback).
+
+**SessionEnd** (`session-cleanup.sh`) — preserves stage files with `ended` status for recovery detection on next session start.
+
+### Key design: dp-spec stage machine
+
+The dp-spec plugin enforces a linear 12-state workflow via stage tracking in `.claude/dp-spec/{session}.stage.json`:
+
+```
+idle ──→ discovering ──→ discovered ──→ brainstorming ──→ brainstormed ──→ researching ──→ researched ──→ drafting ──→ drafted ──→ challenging ──→ challenged ──→ complete
+ ↑        (discover/      (discover/     (brainstorm      (brainstorm      (research       (research      (draft        (draft       (challenge      (challenge      │
+ │         plan running)    plan done)     running)         done)            running)        done)          running)      done)        running)        done)           │
+ └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+                                                                        new cycle (plan)
+```
+
+**Transient states** (`discovering`, `brainstorming`, `researching`, `drafting`, `challenging`): Set by PreToolUse when a skill starts. If interrupted, recovery detects these as non-terminal.
+
+**Resting states** (`idle`, `discovered`, `brainstormed`, `researched`, `drafted`, `challenged`, `complete`): Set by PostToolUse when a skill completes. Stable between skill invocations.
+
+**Quality skill bypass**: `dp-spec:research` with `--standalone` flag is allowed from any stage — no stage enforcement, no stage transition.
+
+### Key design: dp-spec skills
+
+dp-spec ships 6 skills plus one shortcut:
+
+- **`dp-spec:discover`** — Project discovery. Explores codebase silently (CLAUDE.md, architecture docs, schemas, CI config), then asks focused questions ONE AT A TIME (goal, project type, stakeholders, timeline, constraints). Produces a Discovery Summary with requirements seed. Never proposes solutions.
+- **`dp-spec:brainstorm`** — Iterative requirements and approach exploration. Proposes 2-3 named approaches per decision point with tradeoff analysis. Challenges one assumption per round. Maintains a running MoSCoW-tiered requirements summary (Must/Should/Won't Have Yet). Exit requires explicit user satisfaction with the full summary.
+- **`dp-spec:research`** — Evidence-based validation. Operates in pipeline mode (after brainstorm, validates decisions) or standalone mode (`--standalone` flag, ad-hoc research from any stage). Extracts 3-7 research questions, investigates with multi-source corroboration, calibrates confidence (High/Medium/Low), detects pivots that contradict brainstorming decisions.
+- **`dp-spec:draft`** — Tiered document authoring. User selects ADR (single decision), RFC (full technical design, 14 sections), or PRD (product requirements with user stories). Reads the appropriate reference template, writes section by section with user review at each major group, runs a mandatory devil's advocate pre-check before final approval. Saves as `{TYPE}-<title>.md`.
+- **`dp-spec:challenge`** — Adversarial review. Spawns 5 parallel devil agents (Scale, Security, Ops, Simplicity, Dependency) that stress-test the drafted document through their specific lens. Findings are severity-graded (`[CRITICAL]`, `[WARNING]`, `[SUGGESTION]`), deduplicated, and triaged with the user (revise/accept-risk/defer). Runs a mandatory pre-mortem exercise after resolution.
+- **`dp-spec:handoff`** — Spec-to-tasks decomposition. Extracts protection boundaries from the spec, decomposes into 5-15 minute agent work units with dispatch tags (`[subagent]`, `[subagent:isolated]`, `[iterative]`, `[collaborative]`), acceptance criteria, and scope boundaries. Generates a beads molecule (if `bd` CLI available) or a structured markdown task breakdown (fallback). Output is agent-ready for `dp-cto:execute`.
+- **`dp-spec:plan`** — Shortcut that runs discover + brainstorm as a single invocation. Treated identically to `discover` by the stage machine (enters `discovering` stage).
+
+### Key design: dp-spec reference templates
+
+dp-spec includes four reference templates in `plugins/dp-spec/references/`:
+
+- **`adr-template.md`** — Lightweight Architecture Decision Record (one page). Sections: Context, Decision, Consequences, Alternatives Considered, References.
+- **`rfc-template.md`** — Full technical design document (14 sections). Includes mandatory Protection Section (stable interfaces, invariants, migration constraints) and Alternatives Considered.
+- **`prd-template.md`** — Product requirements document. Includes mandatory Agent-Ready Task Format section that bridges PRD to implementation. User stories use Given/When/Then acceptance criteria with MoSCoW tiering (P0/P1/P2).
+- **`task-breakdown-template.md`** — Implementation task breakdown format for handoff. Tasks grouped into Critical Path and Parallelizable Work, each with dispatch type tags, complexity sizing (S/M/L), and quality gate specifications.
+
+### Key design: dp-spec session recovery
+
+Breadcrumb file at `.claude/dp-spec/active.json` tracks the active session:
+
+- Written on each resting state transition (`discovered`, `brainstormed`, `researched`, `drafted`, `challenged`), cleared on `complete` (after handoff)
+- SessionStart checks the breadcrumb (fast path), then scans `*.stage.json` for non-terminal states (fallback)
+- Multiple orphaned stage files resolved by latest `started_at`
+- SessionEnd preserves stage files with `ended` status instead of deleting — enables recovery detection on next session start
+- Non-terminal states for recovery detection: `discovering`, `discovered`, `brainstorming`, `brainstormed`, `researching`, `researched`, `drafting`, `drafted`, `challenging`, `challenged`
+
+### Key design: dp-spec and dp-cto integration
+
+dp-spec and dp-cto are complementary plugins with a designed handoff point:
+
+- dp-spec handles the **specification phase**: discover -> brainstorm -> research -> draft -> challenge -> handoff
+- dp-cto handles the **implementation phase**: start -> execute -> polish
+- `/dp-spec:handoff` produces output (beads molecule or markdown task breakdown) that `/dp-cto:execute` can dispatch directly
+- Both plugins use independent stage machines (`.claude/dp-spec/` and `.claude/dp-cto/`) — no cross-plugin state interference
+- Both plugins share the same hook patterns (research-validator, session recovery, stage tracking) but with independent implementations
+
 ## Prerequisites
 
-| Dependency       | Required      | If Missing                                                                                                                                                           |
-| ---------------- | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash`           | Yes (runtime) | Hooks cannot execute at all                                                                                                                                          |
-| `jq`             | Yes (runtime) | All hooks fail open — no stage tracking, no enforcement, no research validation, no completion gate                                                                  |
-| `bd` CLI (beads) | No (optional) | Beads features skipped silently — `/dp-cto:start` cannot create molecules, `/dp-cto:execute` cannot use `bd ready` scheduling, `bd prime` context injection disabled |
-| `shellcheck`     | No (dev only) | `pnpm run validate` fails but plugin functions normally at runtime                                                                                                   |
+| Dependency       | Required      | If Missing                                                                                                                                                                                                                                     |
+| ---------------- | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash`           | Yes (runtime) | Hooks cannot execute at all (both plugins)                                                                                                                                                                                                     |
+| `jq`             | Yes (runtime) | All hooks fail open — no stage tracking, no enforcement, no research validation, no completion gate (both plugins)                                                                                                                             |
+| `bd` CLI (beads) | No (optional) | dp-cto: `/dp-cto:start` cannot create molecules, `/dp-cto:execute` cannot use `bd ready` scheduling, `bd prime` context injection disabled. dp-spec: `/dp-spec:handoff` falls back to markdown task breakdown instead of beads molecule output |
+| `shellcheck`     | No (dev only) | `pnpm run validate` fails but plugins function normally at runtime                                                                                                                                                                             |
 
-All hooks are designed to **fail open** — if a dependency is missing, the hook exits 0 without blocking the user. This means the plugin degrades gracefully but silently: stage enforcement, research validation, and completion gates all become inactive without `jq`.
+All hooks in both plugins are designed to **fail open** — if a dependency is missing, the hook exits 0 without blocking the user. This means each plugin degrades gracefully but silently: stage enforcement, research validation, and completion gates all become inactive without `jq`.
 
 ## Versioning and Releases
 
-- **Versions in three places, kept in sync:** `marketplace.json` plugins array, `marketplace.json` metadata, and each `plugin.json`. All must match.
-- `pnpm run release -- <bump>` validates current state, bumps all version fields, re-validates, commits, and pushes. No tags, no GitHub releases — version in `plugin.json` is what Claude Code uses for update detection.
-- `pnpm run validate` runs: turbo checks (test + lint + fmt:check), then shell-based validation (JSON validity, version sync, plugin directory existence, SKILL.md frontmatter name vs directory, shellcheck, hooks.json script cross-reference, and `claude plugin validate`).
+- **Per-plugin versioning:** Each plugin has its own version in `marketplace.json` (plugins array) and its own `plugin.json`. These two must match per plugin. The `marketplace.json` `metadata.version` is bumped only during all-plugins releases.
+- **Three release modes:**
+  - `pnpm run release -- <bump>` — bumps all plugins + metadata version
+  - `pnpm run release -- all <bump>` — explicit all-plugins bump (same as above)
+  - `pnpm run release -- <plugin-name> <bump>` — bumps only the named plugin (e.g., `pnpm run release -- dp-spec patch`)
+- `pnpm run validate` runs: turbo checks (test + lint + fmt:check), then shell-based validation (JSON validity, version sync across all plugins, plugin directory existence, SKILL.md frontmatter name vs directory, shellcheck on all plugin hook scripts, hooks.json script cross-reference, and `claude plugin validate` for each plugin).
 - Release script requires clean working tree on main branch.
 - CI runs `pnpm run validate` on every push to `main` and on PRs.
 - Never edit versions manually — always use `pnpm run release`.
@@ -218,19 +329,36 @@ Follows Anthropic's official marketplace conventions:
 
 ## Gotchas
 
+### General
+
 - `CLAUDE.md` is globally gitignored (`~/.gitignore`) — do not attempt `git add CLAUDE.md`
 - `pnpm run release -- <bump>` prompts for confirmation — pipe `echo "y"` for non-interactive use
 - Shellcheck runs on `plugins/*/hooks/*.sh` during `pnpm run validate` — all hook scripts must pass `-S warning`
 - Plugin skills live in `skills/<name>/SKILL.md` (not `commands/`) — must have YAML frontmatter with `---`
+- Per-plugin release (`pnpm run release -- <name> <bump>`) only bumps the named plugin's version — metadata version is unchanged
+
+### dp-cto
+
 - Ralph state files go in `.claude/ralph/` (not `.claude/` root) — session-scoped by timestamp
 - dp-cto PostToolUse hook fires on ALL MCP tools (`mcp__.*`) — if this causes noise, narrow the matcher
 - Stage files are preserved on SessionEnd (not deleted) — `.claude/dp-cto/active.json` is the recovery breadcrumb
 - `bd` CLI must be on `$PATH` for beads features — hooks check `command -v bd` and degrade gracefully if absent
 - Completion gate hook fires on ALL Agent returns — may produce advisory warnings on non-implementation agents
 
+### dp-spec
+
+- Stage files are preserved on SessionEnd (not deleted) — `.claude/dp-spec/active.json` is the recovery breadcrumb
+- `dp-spec:plan` is a shortcut (discover + brainstorm) — the `skills/plan/` directory exists but has no SKILL.md; the hook system handles routing by treating `plan` identically to `discover`
+- `dp-spec:research` has two modes: pipeline mode (stage-enforced, after brainstorm) and standalone mode (`--standalone` flag, bypasses stage enforcement from any stage)
+- dp-spec PostToolUse hook fires on ALL MCP tools (`mcp__.*`) — same pattern as dp-cto
+- `/dp-spec:challenge` spawns 5 parallel devil agents — requires Agent tool availability; each devil reviews ONLY through its designated lens
+- `/dp-spec:handoff` generates beads molecule when `bd` CLI is available, falls back to markdown `TASKS-<title>.md` otherwise — never generates both
+- dp-spec and dp-cto use separate stage directories (`.claude/dp-spec/` and `.claude/dp-cto/`) — no cross-plugin state interference
+
 ## Plugin Installation
 
 ```bash
 claude plugin marketplace add raisedadead/dotplugins
 claude plugin install dp-cto@dotplugins
+claude plugin install dp-spec@dotplugins
 ```

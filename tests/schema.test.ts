@@ -3,6 +3,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { VALID_EVENTS, VALID_HANDLER_TYPES } from "./dp-spec-helpers";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -12,28 +13,6 @@ const HOOKS_JSON = join(REPO_ROOT, "plugins", "dp-cto", "hooks", "hooks.json");
 const PLUGIN_ROOT = join(REPO_ROOT, "plugins", "dp-cto");
 const SKILLS_ROOT = join(PLUGIN_ROOT, "skills");
 const SNAPSHOT_DIR = join(__dirname, "snapshots");
-
-const VALID_EVENTS = [
-  "SessionStart",
-  "UserPromptSubmit",
-  "PreToolUse",
-  "PermissionRequest",
-  "PostToolUse",
-  "PostToolUseFailure",
-  "Notification",
-  "SubagentStart",
-  "SubagentStop",
-  "Stop",
-  "TeammateIdle",
-  "TaskCompleted",
-  "ConfigChange",
-  "WorktreeCreate",
-  "WorktreeRemove",
-  "PreCompact",
-  "SessionEnd",
-];
-
-const VALID_HANDLER_TYPES = ["command", "prompt", "agent"];
 
 // ─── marketplace.json ───────────────────────────────────────────────────────
 
@@ -95,17 +74,28 @@ describe("plugin.json", () => {
 // ─── Version Sync ───────────────────────────────────────────────────────────
 
 describe("Version sync", () => {
-  test("marketplace.json metadata, marketplace.json plugins array, and plugin.json versions match", async () => {
+  test("metadata.version is a valid semver string", async () => {
     const marketplace = JSON.parse(await readFile(MARKETPLACE_JSON, "utf-8"));
-    const plugin = JSON.parse(await readFile(PLUGIN_JSON, "utf-8"));
-
     const metadataVersion = (marketplace.metadata as Record<string, unknown>).version;
-    const pluginsArrayVersion = (marketplace.plugins as Record<string, unknown>[])[0].version;
-    const pluginJsonVersion = plugin.version;
-
     expect(metadataVersion).toBeTypeOf("string");
-    expect(pluginsArrayVersion).toBe(metadataVersion);
-    expect(pluginJsonVersion).toBe(metadataVersion);
+    expect(metadataVersion).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  test("each plugin's marketplace.json version matches its own plugin.json version", async () => {
+    const marketplace = JSON.parse(await readFile(MARKETPLACE_JSON, "utf-8"));
+    const plugins = marketplace.plugins as { name: string; version: string }[];
+
+    for (const entry of plugins) {
+      const pluginJsonPath = join(
+        REPO_ROOT,
+        "plugins",
+        entry.name,
+        ".claude-plugin",
+        "plugin.json",
+      );
+      const pluginData = JSON.parse(await readFile(pluginJsonPath, "utf-8"));
+      expect(pluginData.version).toBe(entry.version);
+    }
   });
 });
 
