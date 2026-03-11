@@ -1,6 +1,6 @@
 {
   "name": "dp-cto",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "description": "CTO orchestration layer — /dp-cto:start for brainstorming and planning, /dp-cto:execute for adaptive dispatch with beads-aware harness hooks, /dp-cto:ralph for iterative loops, /dp-cto:polish for multi-perspective review, /dp-cto:verify for research validation.",
   "author": {
     "name": "Mrugesh",
