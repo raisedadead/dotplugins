@@ -43,7 +43,7 @@ case "$SKILL_NAME" in
 
     # Quality skills — side-effect-free, no stage transition, pass silently
     case "$SKILL" in
-      tdd|debug|verify-done|review|sweep)
+      tdd|debug|verify-done|review|sweep|reset)
         exit 0
         ;;
     esac

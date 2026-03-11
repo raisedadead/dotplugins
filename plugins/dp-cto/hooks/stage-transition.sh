@@ -65,7 +65,7 @@ case "$SKILL" in
     clear_breadcrumb
     ;;
   # Quality / side-effect skills — no stage transition
-  tdd | debug | verify-done | review | sweep)
+  tdd | debug | verify-done | review | sweep | reset)
     exit 0
     ;;
   *)

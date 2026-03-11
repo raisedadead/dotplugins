@@ -142,8 +142,9 @@ dp-cto skills must ALWAYS be invoked exactly as requested:
 - /dp-cto:ralph-cancel — cancel an active ralph loop.
 - /dp-cto:verify — manual deep-validation of research findings.
 - /dp-cto:sweep — entropy management and pattern drift detection across dead code, inconsistent patterns, stale comments, and naming violations.
+- /dp-cto:reset — sprint-boundary cleanup. Prunes ended stage files, completed ralph states, stale breadcrumbs, and runs beads housekeeping.
 
-dp-cto quality skills (side-effect-free, allowed from any stage): dp-cto:tdd, dp-cto:debug, dp-cto:verify-done, dp-cto:review, dp-cto:sweep.
+dp-cto quality skills (side-effect-free, allowed from any stage): dp-cto:tdd, dp-cto:debug, dp-cto:verify-done, dp-cto:review, dp-cto:sweep, dp-cto:reset.
 
 Beads integration active when bd CLI is available. Plans stored as beads molecules.
 
