@@ -52,22 +52,22 @@ plugins/
       lib-stage.sh                 <- shared library for legacy stage file read/write/breadcrumb ops
       lib-state.sh                 <- shared library for beads-backed state management (cache r/w,
                                       sync_from_beads, write_state, suspend_state, resume_state)
-    skills/start/SKILL.md          <- /dp-cto:start brainstorming, planning, beads molecule creation
-    skills/execute/SKILL.md        <- /dp-cto:execute adaptive dispatch via bd ready scheduling
-    skills/ralph/SKILL.md          <- /dp-cto:ralph subagent-based iterative loop coordinator
-    skills/ralph-cancel/SKILL.md   <- /dp-cto:ralph-cancel graceful loop cancellation
-    skills/polish/SKILL.md         <- /dp-cto:polish multi-perspective review and polishing
-    skills/verify/SKILL.md         <- /dp-cto:verify manual deep-validation of research
-    skills/tdd/SKILL.md            <- /dp-cto:tdd test-driven development (RED-GREEN-REFACTOR)
-    skills/debug/SKILL.md          <- /dp-cto:debug systematic 4-phase debugging
-    skills/verify-done/SKILL.md    <- /dp-cto:verify-done gate function, evidence-before-claims
-    skills/review/SKILL.md         <- /dp-cto:review dispatch review agent + process feedback
-    skills/sweep/SKILL.md          <- /dp-cto:sweep entropy management and pattern drift detection
-    skills/board/SKILL.md          <- /dp-cto:board read-only dashboard
-    skills/sprint/SKILL.md         <- /dp-cto:sprint lifecycle management
-    skills/interrupt/SKILL.md      <- /dp-cto:interrupt context-preserving suspension
-    skills/resume/SKILL.md         <- /dp-cto:resume restore suspended epic
-    skills/cleanup/SKILL.md       <- /dp-cto:cleanup sprint-boundary cleanup
+    skills/work-plan/SKILL.md          <- /dp-cto:work-plan brainstorming, planning, beads molecule creation
+    skills/work-run/SKILL.md           <- /dp-cto:work-run adaptive dispatch via bd ready scheduling
+    skills/work-run-loop/SKILL.md      <- /dp-cto:work-run-loop subagent-based iterative loop coordinator
+    skills/work-stop-loop/SKILL.md     <- /dp-cto:work-stop-loop graceful loop cancellation
+    skills/work-polish/SKILL.md        <- /dp-cto:work-polish multi-perspective review and polishing
+    skills/quality-fact-check/SKILL.md <- /dp-cto:quality-fact-check manual deep-validation of research
+    skills/quality-red-green-refactor/SKILL.md <- /dp-cto:quality-red-green-refactor test-driven development (RED-GREEN-REFACTOR)
+    skills/quality-deep-debug/SKILL.md <- /dp-cto:quality-deep-debug systematic 4-phase debugging
+    skills/quality-check-done/SKILL.md <- /dp-cto:quality-check-done gate function, evidence-before-claims
+    skills/quality-code-review/SKILL.md <- /dp-cto:quality-code-review dispatch review agent + process feedback
+    skills/quality-sweep-code/SKILL.md <- /dp-cto:quality-sweep-code entropy management and pattern drift detection
+    skills/ops-show-board/SKILL.md     <- /dp-cto:ops-show-board read-only dashboard
+    skills/ops-track-sprint/SKILL.md   <- /dp-cto:ops-track-sprint lifecycle management
+    skills/work-park/SKILL.md          <- /dp-cto:work-park context-preserving suspension
+    skills/work-unpark/SKILL.md        <- /dp-cto:work-unpark restore suspended epic
+    skills/ops-clean-slate/SKILL.md    <- /dp-cto:ops-clean-slate sprint-boundary cleanup
 ```
 
 ### Key design: dp-cto hook system
@@ -78,7 +78,7 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 `intercept-orchestration.sh` — tiered Skill interception:
 
-- **dp-cto skills**: stage enforcement — validates the current workflow stage allows the requested skill (e.g., `execute` requires `planned` stage). Quality skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`, `board`, `sprint`) and `ralph-cancel` always pass. `interrupt` is allowed from `executing` or `polishing`. `resume` is allowed from `idle`.
+- **dp-cto skills**: stage enforcement — validates the current workflow stage allows the requested skill (e.g., `work-run` requires `planned` stage). Quality skills (`quality-red-green-refactor`, `quality-deep-debug`, `quality-check-done`, `quality-code-review`, `quality-sweep-code`, `ops-show-board`, `ops-track-sprint`) and `work-stop-loop` always pass. `work-park` is allowed from `executing` or `polishing`. `work-unpark` is allowed from `idle`.
 - **Tier 1 WARN**: unknown skills with orchestration-adjacent names get a warning
 - **Tier 2 PASS**: everything else passes silently
 
@@ -87,28 +87,28 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 **PostToolUse** — three hooks:
 
 - `research-validator.sh` — fires on `WebSearch|WebFetch|mcp__.*`, injects verification checklists
-- `stage-transition.sh` — fires on `Skill`, tracks dp-cto stage transitions (including `interrupt` -> `suspend_state` and `resume` -> skill-managed restoration)
-- `completion-gate.sh` — fires on `Agent`, detects completion claims without test evidence, injects advisory warning (defense-in-depth for `dp-cto:verify-done`)
+- `stage-transition.sh` — fires on `Skill`, tracks dp-cto stage transitions (including `work-park` -> `suspend_state` and `work-unpark` -> skill-managed restoration)
+- `completion-gate.sh` — fires on `Agent`, detects completion claims without test evidence, injects advisory warning (defense-in-depth for `dp-cto:quality-check-done`)
 
 **SessionStart** (`session-start.sh`) — injects enforcement context, syncs state from beads via `sync_from_beads()`, runs `bd prime` for beads context injection, detects recoverable prior sessions.
 
 **SessionEnd** (`session-cleanup.sh`) — no-op in v4.0. State lives on beads epics, synced in real-time.
 
-### Key design: dp-cto:execute adaptive dispatch
+### Key design: dp-cto:work-run adaptive dispatch
 
-`/dp-cto:execute` uses beads-driven adaptive dispatch — `bd ready --json` returns tasks with all dependencies resolved, and execute dispatches them using the right Claude Code primitive:
+`/dp-cto:work-run` uses beads-driven adaptive dispatch — `bd ready --json` returns tasks with all dependencies resolved, and work-run dispatches them using the right Claude Code primitive:
 
 - **Beads scheduling**: `bd ready --json` replaces manual plan parsing. CTO dispatches whatever is ready, marks done with `bd close {task-id}`, then re-queries `bd ready` to discover newly unblocked tasks.
-- **Agent prompt extraction**: What were previously fenced `agent-prompt` blocks in markdown are now stored as beads issue descriptions (written by `/dp-cto:start`). Execute extracts them via `bd show {task-id} --json` and passes them verbatim to Agent calls — execute is a near-mechanical dispatcher.
+- **Agent prompt extraction**: What were previously fenced `agent-prompt` blocks in markdown are now stored as beads issue descriptions (written by `/dp-cto:work-plan`). Work-run extracts them via `bd show {task-id} --json` and passes them verbatim to Agent calls — work-run is a near-mechanical dispatcher.
 - **Phase 1 — Subagent dispatch**: `[subagent]` tasks spawn via `Agent(run_in_background=true)` for parallel execution. `[subagent:isolated]` adds `isolation: "worktree"` for filesystem isolation.
-- **Phase 2 — Iterative dispatch**: `[iterative]` tasks invoke `/dp-cto:ralph` (sequential foreground subagent loop). No team collision since ralph is subagent-based.
+- **Phase 2 — Iterative dispatch**: `[iterative]` tasks invoke `/dp-cto:work-run-loop` (sequential foreground subagent loop). No team collision since work-run-loop is subagent-based.
 - **Phase 3 — Collaborative dispatch**: `[collaborative]` tasks (rare) use `TeamCreate` + teammates + `SendMessage` for inter-agent coordination. Only phase that creates a team.
-- **Review**: Subagent results reviewed via fresh review agents. Fix loop spawns fresh fix agents. After 2 failed fix rounds, mark done with `bd close`, report failure, and suggest user invoke `/dp-cto:ralph` manually.
-- **Hands-off execution**: No confirmation pauses during execute. No commit checkpoints, no "ready to integrate" gate. Execute runs autonomously with the stage machine, completion gate, and quality gate as safety nets.
+- **Review**: Subagent results reviewed via fresh review agents. Fix loop spawns fresh fix agents. After 2 failed fix rounds, mark done with `bd close`, report failure, and suggest user invoke `/dp-cto:work-run-loop` manually.
+- **Hands-off execution**: No confirmation pauses during work-run. No commit checkpoints, no "ready to integrate" gate. Work-run runs autonomously with the stage machine, completion gate, and quality gate as safety nets.
 
-### Key design: dp-cto:ralph iterative loops
+### Key design: dp-cto:work-run-loop iterative loops
 
-`/dp-cto:ralph` provides subagent-based iterative execution:
+`/dp-cto:work-run-loop` provides subagent-based iterative execution:
 
 - Each iteration spawns a fresh `general-purpose` subagent via the Agent tool (no teams, no context rot)
 - Session-scoped state files in `.claude/ralph/{SESSION_ID}.md` (no cross-terminal interference)
@@ -119,13 +119,13 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 **CTO integration** (three points):
 
-- CTO classifies beads tasks as `[subagent]`, `[iterative]`, or `[collaborative]`; `[iterative]` tasks are first dispatched as subagents — if they fail after 2 fix rounds, CTO reports the failure and suggests the user invoke `/dp-cto:ralph` manually
-- CTO's review fix loop reports failure after 2 fix attempts and suggests user invoke ralph manually
-- ralph reads from active CTO plan when invoked without args
+- CTO classifies beads tasks as `[subagent]`, `[iterative]`, or `[collaborative]`; `[iterative]` tasks are first dispatched as subagents — if they fail after 2 fix rounds, CTO reports the failure and suggests the user invoke `/dp-cto:work-run-loop` manually
+- CTO's review fix loop reports failure after 2 fix attempts and suggests user invoke work-run-loop manually
+- work-run-loop reads from active CTO plan when invoked without args
 
-### Key design: dp-cto:polish multi-perspective review
+### Key design: dp-cto:work-polish multi-perspective review
 
-`/dp-cto:polish` adds a post-implementation polishing phase that spawns parallel review agents with configurable lenses:
+`/dp-cto:work-polish` adds a post-implementation polishing phase that spawns parallel review agents with configurable lenses:
 
 - **Core lenses** (default): Security, Simplification/Dead Code, Test Coverage Gaps, Linting/Formatting
 - **Extended lenses** (opt-in): Performance, Documentation/Comments
@@ -137,13 +137,13 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 **Workflow integration**:
 
-- After `/dp-cto:execute` completes, the stage transitions to `polishing` — the user must manually invoke `/dp-cto:polish` to run the polishing phase (the hook sets the stage but does not auto-invoke the skill)
+- After `/dp-cto:work-run` completes, the stage transitions to `polishing` — the user must manually invoke `/dp-cto:work-polish` to run the polishing phase (the hook sets the stage but does not auto-invoke the skill)
 - Also available standalone from `complete` stage for re-polishing
 - State machine stage: `polishing` (between `executing` and `complete`)
 
 ### Key design: dp-cto research validation
 
-The dp-cto plugin includes a PostToolUse hook (`research-validator.sh`) that fires after WebSearch, WebFetch, and MCP tool calls. It injects verification checklists prompting the agent to cross-check sources. The `/dp-cto:verify` skill provides manual deep-validation on demand.
+The dp-cto plugin includes a PostToolUse hook (`research-validator.sh`) that fires after WebSearch, WebFetch, and MCP tool calls. It injects verification checklists prompting the agent to cross-check sources. The `/dp-cto:quality-fact-check` skill provides manual deep-validation on demand.
 
 ### Key design: agent protocol
 
@@ -152,11 +152,11 @@ dp-cto uses `bd comments add` to track structured dispatch and outcome data on b
 - **Task-level**: dispatch comments record which agent was assigned and the prompt used; outcome comments record pass/fail, test evidence, and any fix attempts.
 - **Epic-level**: review comments record review agent findings; fix comments record fix agent results per round.
 
-This provides a persistent audit trail per-epic that survives session boundaries and enables `/dp-cto:board` to display progress without re-parsing agent output.
+This provides a persistent audit trail per-epic that survives session boundaries and enables `/dp-cto:ops-show-board` to display progress without re-parsing agent output.
 
 ### Key design: sprint framework
 
-`/dp-cto:sprint` manages sprint lifecycle via `bd` labels:
+`/dp-cto:ops-track-sprint` manages sprint lifecycle via `bd` labels:
 
 - **Plan**: Create a sprint, assign epics to it, set sprint goals
 - **Review**: Check sprint progress, surface blocked/at-risk epics
@@ -169,30 +169,30 @@ Sprint state is stored as beads labels (`sprint:<name>`) on epics. The `cache.js
 
 dp-cto v4.0 uses beads (via the `bd` CLI) for plan storage, task scheduling, and stage state, replacing both markdown plans and per-session stage files:
 
-- **`/dp-cto:start` molecule creation**: After brainstorming and analysis (unchanged), creates a beads epic via `bd create`, child tasks via `bd create --parent`, and dependency edges via `bd dep add`. Analysis content is stored as the epic's body via `bd edit --body`. Agent prompts are stored as task descriptions via `bd edit --body`.
-- **`/dp-cto:execute` beads dispatch**: Queries `bd ready --json` for tasks with all blockers resolved, extracts agent prompts from `bd show {task-id} --json`, dispatches agents, and marks completion with `bd close {task-id}`. Re-queries `bd ready` after each round to discover newly unblocked tasks.
+- **`/dp-cto:work-plan` molecule creation**: After brainstorming and analysis (unchanged), creates a beads epic via `bd create`, child tasks via `bd create --parent`, and dependency edges via `bd dep add`. Analysis content is stored as the epic's body via `bd edit --body`. Agent prompts are stored as task descriptions via `bd edit --body`.
+- **`/dp-cto:work-run` beads dispatch**: Queries `bd ready --json` for tasks with all blockers resolved, extracts agent prompts from `bd show {task-id} --json`, dispatches agents, and marks completion with `bd close {task-id}`. Re-queries `bd ready` after each round to discover newly unblocked tasks.
 - **`bd prime` context injection**: SessionStart hook runs `bd prime` when `bd` is available and `.beads/` exists in the working directory. Injects a compact 1-2k token summary into the session context (instead of the full plan).
-- **Graceful degradation**: If `bd` is not installed or no `.beads/` directory exists, beads features are skipped silently. Hooks still fail open, but orchestration skills (start, execute, polish, sprint, interrupt, resume) are disabled without `bd`.
+- **Graceful degradation**: If `bd` is not installed or no `.beads/` directory exists, beads features are skipped silently. Hooks still fail open, but orchestration skills (work-plan, work-run, work-polish, ops-track-sprint, work-park, work-unpark) are disabled without `bd`.
 - **Unified state**: Beads labels (`dp-cto:<stage>`) are the source of truth for stage state. Local `cache.json` (`.claude/dp-cto/cache.json`) is synced from beads on session start and updated in real-time by hooks. No per-session stage files.
 
 ### Key design: harness engineering hooks
 
 dp-cto v4.0 applies harness engineering patterns — defense-in-depth hooks that catch common agent failure modes:
 
-- **Completion gate** (`completion-gate.sh`): PostToolUse hook on Agent returns. Detects completion claims ("all tests pass", "implementation complete", etc.) that lack test execution evidence (test runner output, pass/fail counts, exit codes). Injects an advisory warning — does NOT block. Defense-in-depth for the `dp-cto:verify-done` skill.
-- **Sweep** (`/dp-cto:sweep`): Entropy management skill inspired by the principle "Entropy Management Is Garbage Collection." Agents replicate all patterns they find — good and bad. Sweep spawns parallel drift-detection agents per category (dead code, inconsistent patterns, stale comments, naming violations), severity-grades findings, and auto-fixes critical/warning items via one-shot agents with quality gate verification.
+- **Completion gate** (`completion-gate.sh`): PostToolUse hook on Agent returns. Detects completion claims ("all tests pass", "implementation complete", etc.) that lack test execution evidence (test runner output, pass/fail counts, exit codes). Injects an advisory warning — does NOT block. Defense-in-depth for the `dp-cto:quality-check-done` skill.
+- **Sweep** (`/dp-cto:quality-sweep-code`): Entropy management skill inspired by the principle "Entropy Management Is Garbage Collection." Agents replicate all patterns they find — good and bad. Sweep spawns parallel drift-detection agents per category (dead code, inconsistent patterns, stale comments, naming violations), severity-grades findings, and auto-fixes critical/warning items via one-shot agents with quality gate verification.
 
 ### Key design: native quality skills
 
 dp-cto ships seven native quality skills:
 
-- **`dp-cto:tdd`** — Iron law, RED-GREEN-REFACTOR, rationalization prevention
-- **`dp-cto:debug`** — 4-phase investigation, 3-fix architecture check
-- **`dp-cto:verify-done`** — Gate function, evidence-before-claims (reinforced by completion-gate hook)
-- **`dp-cto:review`** — Dispatch review agent + process feedback with technical rigor
-- **`dp-cto:sweep`** — Entropy management, pattern drift detection and cleanup
-- **`dp-cto:board`** — Read-only project dashboard (epic status, task progress, blockers)
-- **`dp-cto:sprint`** — Sprint lifecycle management (Plan/Review/Retro/Close)
+- **`dp-cto:quality-red-green-refactor`** — Iron law, RED-GREEN-REFACTOR, rationalization prevention
+- **`dp-cto:quality-deep-debug`** — 4-phase investigation, 3-fix architecture check
+- **`dp-cto:quality-check-done`** — Gate function, evidence-before-claims (reinforced by completion-gate hook)
+- **`dp-cto:quality-code-review`** — Dispatch review agent + process feedback with technical rigor
+- **`dp-cto:quality-sweep-code`** — Entropy management, pattern drift detection and cleanup
+- **`dp-cto:ops-show-board`** — Read-only project dashboard (epic status, task progress, blockers)
+- **`dp-cto:ops-track-sprint`** — Sprint lifecycle management (Plan/Review/Retro/Close)
 
 These are side-effect-free quality skills: no stage transitions, always allowed by the hook system regardless of workflow stage.
 
@@ -212,29 +212,29 @@ The dp-cto plugin enforces a linear workflow via epic-scoped beads labels (`dp-c
 
 ```
 idle ──→ planning ──→ planned ──→ executing ──→ polishing ──→ complete
- ↑        (start       (start      (execute      (execute       │
+ ↑        (work-plan   (work-plan   (work-run    (work-run      │
  │         running)      done)       running)      done)         │
  └───────────────────────────────────────────────────────────────┘
-                           new cycle (start)
+                           new cycle (work-plan)
 
-executing ──→ suspended ──→ executing   (via interrupt → resume)
+executing ──→ suspended ──→ executing   (via work-park → work-unpark)
 polishing ──→ suspended ──→ polishing
 ```
 
 **Transient states** (`planning`, `executing`, `polishing`): Set by PreToolUse when a skill starts. If interrupted, recovery detects these as non-terminal.
 
-**Resting states** (`idle`, `planned`, `complete`, `suspended`): Set by PostToolUse when a skill completes. Stable between skill invocations. `suspended` is entered via `/dp-cto:interrupt` and exited via `/dp-cto:resume` (which restores the epic to its pre-suspension stage).
+**Resting states** (`idle`, `planned`, `complete`, `suspended`): Set by PostToolUse when a skill completes. Stable between skill invocations. `suspended` is entered via `/dp-cto:work-park` and exited via `/dp-cto:work-unpark` (which restores the epic to its pre-suspension stage).
 
-Side-effect-free skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`, `board`, `sprint`) and `ralph-cancel` are allowed from any stage. `cleanup` is also stage-unrestricted but has side effects (cache deletion, epic closure, label cleanup).
+Side-effect-free skills (`quality-red-green-refactor`, `quality-deep-debug`, `quality-check-done`, `quality-code-review`, `quality-sweep-code`, `ops-show-board`, `ops-track-sprint`) and `work-stop-loop` are allowed from any stage. `ops-clean-slate` is also stage-unrestricted but has side effects (cache deletion, epic closure, label cleanup).
 
 ## Prerequisites
 
-| Dependency       | Required                              | If Missing                                                                                                                                                                                                                                                                            |
-| ---------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `bash`           | Yes (runtime)                         | Hooks cannot execute at all                                                                                                                                                                                                                                                           |
-| `jq`             | Yes (runtime)                         | All hooks fail open — no stage tracking, no enforcement, no research validation, no completion gate                                                                                                                                                                                   |
-| `bd` CLI (beads) | Yes (required for full functionality) | Hooks degrade gracefully — orchestration skills (`start`, `execute`, `polish`, `sprint`, `interrupt`, `resume`) disabled without `bd`. Quality skills (`tdd`, `debug`, `verify-done`, `review`, `sweep`, `board`, `cleanup`) remain available. `bd prime` context injection disabled. |
-| `shellcheck`     | No (dev only)                         | `pnpm run validate` fails but plugin functions normally at runtime                                                                                                                                                                                                                    |
+| Dependency       | Required                              | If Missing                                                                                                                                                                                                                                                                                                                                                                                           |
+| ---------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bash`           | Yes (runtime)                         | Hooks cannot execute at all                                                                                                                                                                                                                                                                                                                                                                          |
+| `jq`             | Yes (runtime)                         | All hooks fail open — no stage tracking, no enforcement, no research validation, no completion gate                                                                                                                                                                                                                                                                                                  |
+| `bd` CLI (beads) | Yes (required for full functionality) | Hooks degrade gracefully — orchestration skills (`work-plan`, `work-run`, `work-polish`, `ops-track-sprint`, `work-park`, `work-unpark`) disabled without `bd`. Quality skills (`quality-red-green-refactor`, `quality-deep-debug`, `quality-check-done`, `quality-code-review`, `quality-sweep-code`, `ops-show-board`, `ops-clean-slate`) remain available. `bd prime` context injection disabled. |
+| `shellcheck`     | No (dev only)                         | `pnpm run validate` fails but plugin functions normally at runtime                                                                                                                                                                                                                                                                                                                                   |
 
 All hooks are designed to **fail open** — if a dependency is missing, the hook exits 0 without blocking the user. This means the plugin degrades gracefully but silently: stage enforcement, research validation, and completion gates all become inactive without `jq`.
 
@@ -263,12 +263,12 @@ Follows Anthropic's official marketplace conventions:
 - `pnpm run release -- <bump>` prompts for confirmation — pipe `echo "y"` for non-interactive use
 - Shellcheck runs on `plugins/*/hooks/*.sh` during `pnpm run validate` — all hook scripts must pass `-S warning`
 - Plugin skills live in `skills/<name>/SKILL.md` (not `commands/`) — must have YAML frontmatter with `---`
-- Ralph state files go in `.claude/ralph/` (not `.claude/` root) — session-scoped by timestamp
+- Work-run-loop state files go in `.claude/ralph/` (not `.claude/` root) — session-scoped by timestamp
 - dp-cto PostToolUse hook fires on ALL MCP tools (`mcp__.*`) — if this causes noise, narrow the matcher
 - `cache.json` (`.claude/dp-cto/cache.json`) is the local state file, not per-session — one file per project, synced from beads on session start
 - `.claude/dp-cto/active.json` breadcrumb still exists as a recovery fast-path fallback
 - `bd` CLI must be on `$PATH` for orchestration skills — hooks check `command -v bd` and degrade gracefully if absent
-- `board` and `sprint` are quality skills (side-effect-free, allowed from any stage)
+- `ops-show-board` and `ops-track-sprint` are quality skills (side-effect-free, allowed from any stage)
 - Completion gate hook fires on ALL Agent returns — may produce advisory warnings on non-implementation agents
 
 ## Plugin Installation

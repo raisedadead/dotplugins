@@ -3,7 +3,7 @@ set -euo pipefail
 
 # PostToolUse hook: detects completion claims in Agent output that lack test
 # execution evidence. Injects an advisory warning (systemMessage) — does NOT
-# block. Defense-in-depth for the dp-cto:verify-done skill.
+# block. Defense-in-depth for the dp-cto:quality-check-done skill.
 
 # Fail open if jq is not available
 if ! command -v jq &>/dev/null; then
@@ -56,7 +56,7 @@ if [ "$HAS_EVIDENCE" = "true" ]; then
   exit 0
 fi
 
-WARNING="Agent claimed completion without test evidence. Verify with dp-cto:verify-done before accepting."
+WARNING="Agent claimed completion without test evidence. Verify with dp-cto:quality-check-done before accepting."
 
 jq -n --arg msg "$WARNING" '{
   hookSpecificOutput: {

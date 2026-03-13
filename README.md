@@ -18,48 +18,48 @@ Requires: `jq` on PATH. Optional: `bd` CLI (beads) for structured task schedulin
 ### The Workflow (3 commands)
 
 ```
-/dp-cto:start   →  You describe the feature. Plugin brainstorms approaches,
-                    asks clarifying questions, writes a plan with tasks.
+/dp-cto:work-plan   →  You describe the feature. Plugin brainstorms approaches,
+                        asks clarifying questions, writes a plan with tasks.
 
-/dp-cto:execute →  Plugin dispatches agents in parallel to implement each task.
-                    Reviews their work. Fix loop if needed. Runs autonomously.
+/dp-cto:work-run    →  Plugin dispatches agents in parallel to implement each task.
+                        Reviews their work. Fix loop if needed. Runs autonomously.
 
-/dp-cto:polish  →  Auto-chained after execute. 6 specialist review agents
-                    (security, dead code, test gaps, linting, perf, docs)
-                    find issues, auto-fix critical/warning, you pick suggestions.
+/dp-cto:work-polish →  Auto-chained after work-run. 6 specialist review agents
+                        (security, dead code, test gaps, linting, perf, docs)
+                        find issues, auto-fix critical/warning, you pick suggestions.
 ```
 
 ```
                   writes        dispatches       fixes
                    plan           agents        findings
-  /dp-cto:start ────────> /dp-cto:execute ────────> /dp-cto:polish ────────> Done
-       ^                                                                       │
-       └────────────────────── new feature ────────────────────────────────────┘
+  /dp-cto:work-plan ────────> /dp-cto:work-run ────────> /dp-cto:work-polish ────────> Done
+       ^                                                                                 │
+       └────────────────────── new feature ──────────────────────────────────────────────┘
 ```
 
 ### Quality Skills (use anytime)
 
-| Skill                 | Purpose                                                    |
-| --------------------- | ---------------------------------------------------------- |
-| `/dp-cto:tdd`         | Enforces RED-GREEN-REFACTOR. No code without failing test. |
-| `/dp-cto:debug`       | 4-phase root cause investigation before any fix attempt.   |
-| `/dp-cto:verify-done` | Blocks completion claims without test output evidence.     |
-| `/dp-cto:review`      | Dispatches review agent, processes feedback with rigor.    |
-| `/dp-cto:sweep`       | Finds and fixes dead code, naming drift, stale comments.   |
+| Skill                                | Purpose                                                    |
+| ------------------------------------ | ---------------------------------------------------------- |
+| `/dp-cto:quality-red-green-refactor` | Enforces RED-GREEN-REFACTOR. No code without failing test. |
+| `/dp-cto:quality-deep-debug`         | 4-phase root cause investigation before any fix attempt.   |
+| `/dp-cto:quality-check-done`         | Blocks completion claims without test output evidence.     |
+| `/dp-cto:quality-code-review`        | Dispatches review agent, processes feedback with rigor.    |
+| `/dp-cto:quality-sweep-code`         | Finds and fixes dead code, naming drift, stale comments.   |
 
 ### Escape Hatches
 
-| Skill                  | When                                                                             |
-| ---------------------- | -------------------------------------------------------------------------------- |
-| `/dp-cto:ralph`        | Task keeps failing — iterative loop with fresh agent each attempt + quality gate |
-| `/dp-cto:ralph-cancel` | Stop an active ralph loop                                                        |
-| `/dp-cto:verify`       | Deep-validate research findings claim by claim                                   |
+| Skill                        | When                                                                             |
+| ---------------------------- | -------------------------------------------------------------------------------- |
+| `/dp-cto:work-run-loop`      | Task keeps failing — iterative loop with fresh agent each attempt + quality gate |
+| `/dp-cto:work-stop-loop`     | Stop an active work-run-loop                                                     |
+| `/dp-cto:quality-fact-check` | Deep-validate research findings claim by claim                                   |
 
 ### What Happens Behind the Scenes
 
 Hooks enforce discipline automatically — you never invoke them:
 
-- **Stage machine** prevents running execute before start, or polish before execute
+- **Stage machine** prevents running work-run before work-plan, or work-polish before work-run
 - **Completion gate** warns when agents claim "tests pass" without showing test output
 - **Research validator** injects verification checklists after web searches and MCP calls
 - **Session recovery** detects interrupted workflows and offers to resume next session
@@ -79,13 +79,13 @@ You are the CTO. You never write code or review code yourself. You:
 
 ### Adaptive Dispatch
 
-Execute classifies each task and picks the right primitive:
+Work-run classifies each task and picks the right primitive:
 
 | Classification        | Primitive                    | When                                        |
 | --------------------- | ---------------------------- | ------------------------------------------- |
 | `[subagent]`          | `Agent(run_in_background)`   | Independent work, parallelizable            |
 | `[subagent:isolated]` | `Agent(isolation: worktree)` | Needs filesystem isolation from other tasks |
-| `[iterative]`         | `/dp-cto:ralph`              | Needs quality gate + multiple attempts      |
+| `[iterative]`         | `/dp-cto:work-run-loop`      | Needs quality gate + multiple attempts      |
 | `[collaborative]`     | `TeamCreate + SendMessage`   | Rare — agents need to coordinate            |
 
 Task scheduling uses beads dependency graphs (`bd ready --json`) to discover what's unblocked after each round.
@@ -132,40 +132,40 @@ Strict state transitions prevent out-of-order skill invocations:
   ┌──────────┐
   │   idle   │
   └────┬─────┘
-       │ /start
+       │ /work-plan
        v
   ┌──────────┐
   │ planning │
   └────┬─────┘
        │ plan written
        v
-  ┌──────────┐ <── /start (revise)
+  ┌──────────┐ <── /work-plan (revise)
   │ planned  │
   └────┬─────┘
-       │ /execute
+       │ /work-run
        v
-  ┌──────────────────────────┐
-  │        executing         │
-  │  (/ralph, /verify ok)    │
-  └────────────┬─────────────┘
+  ┌──────────────────────────────────────┐
+  │        executing                     │
+  │  (/work-run-loop, /quality-fact-check ok) │
+  └────────────┬─────────────────────────┘
                │ auto-chain
                v
-  ┌──────────────────────────┐
-  │        polishing         │
-  └────────────┬─────────────┘
-               │ /polish done
+  ┌──────────────────────────────────────┐
+  │        polishing                     │
+  └────────────┬─────────────────────────┘
+               │ /work-polish done
                v
-  ┌──────────────────────────┐
-  │        complete          │──── /start (new cycle)
-  └──────────────────────────┘
+  ┌──────────────────────────────────────┐
+  │        complete                      │──── /work-plan (new cycle)
+  └──────────────────────────────────────┘
 
   Quality skills bypass the stage machine entirely.
-  /ralph-cancel is always allowed.
+  /work-stop-loop is always allowed.
 ```
 
 ### Fresh Context Architecture
 
-Ralph spawns a new `general-purpose` agent per iteration instead of continuing in-context. This prevents context rot — each iteration starts clean with only the structured state file as memory. Same pattern applies to review and fix agents in execute.
+Work-run-loop spawns a new `general-purpose` agent per iteration instead of continuing in-context. This prevents context rot — each iteration starts clean with only the structured state file as memory. Same pattern applies to review and fix agents in work-run.
 
 ---
 
@@ -206,17 +206,17 @@ dotplugins/
 │       │   ├── lib-stage.sh               # Shared stage read/write helpers
 │       │   └── research-validator.sh      # PostToolUse: verification checklists
 │       └── skills/
-│           ├── start/SKILL.md
-│           ├── execute/SKILL.md
-│           ├── ralph/SKILL.md
-│           ├── ralph-cancel/SKILL.md
-│           ├── polish/SKILL.md
-│           ├── verify/SKILL.md
-│           ├── tdd/SKILL.md
-│           ├── debug/SKILL.md
-│           ├── verify-done/SKILL.md
-│           ├── review/SKILL.md
-│           └── sweep/SKILL.md
+│           ├── work-plan/SKILL.md
+│           ├── work-run/SKILL.md
+│           ├── work-run-loop/SKILL.md
+│           ├── work-stop-loop/SKILL.md
+│           ├── work-polish/SKILL.md
+│           ├── quality-fact-check/SKILL.md
+│           ├── quality-red-green-refactor/SKILL.md
+│           ├── quality-deep-debug/SKILL.md
+│           ├── quality-check-done/SKILL.md
+│           ├── quality-code-review/SKILL.md
+│           └── quality-sweep-code/SKILL.md
 ├── tests/                        # Vitest hook contract + schema tests
 ├── scripts/
 │   ├── validate.sh               # Full plugin validation suite

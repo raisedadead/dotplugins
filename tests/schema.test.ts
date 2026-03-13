@@ -170,22 +170,22 @@ describe("hooks.json", () => {
 // ─── Skill Frontmatter Validation ────────────────────────────────────────────
 
 const EXPECTED_SKILLS = [
-  "start",
-  "execute",
-  "ralph",
-  "ralph-cancel",
-  "polish",
-  "verify",
-  "tdd",
-  "debug",
-  "verify-done",
-  "review",
-  "sweep",
-  "cleanup",
-  "board",
-  "sprint",
-  "interrupt",
-  "resume",
+  "work-plan",
+  "work-run",
+  "work-run-loop",
+  "work-stop-loop",
+  "work-polish",
+  "quality-fact-check",
+  "quality-red-green-refactor",
+  "quality-deep-debug",
+  "quality-check-done",
+  "quality-code-review",
+  "quality-sweep-code",
+  "ops-clean-slate",
+  "ops-show-board",
+  "ops-track-sprint",
+  "work-park",
+  "work-unpark",
 ];
 
 describe("Skill frontmatter", () => {

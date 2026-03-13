@@ -69,203 +69,221 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
   describe("idle stage", () => {
     // No cache file = idle (fail-open default)
 
-    test("start is allowed", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+    test("work-plan is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
     });
 
-    test("execute is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /start/i);
+    test("work-run is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-run")), /work-plan/i);
     });
 
-    test("ralph is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /start/i);
+    test("work-run-loop is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-run-loop")), /work-plan/i);
     });
 
-    test("polish is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:polish")), /Run \/dp-cto:start first/);
+    test("work-polish is denied", async () => {
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:work-polish")),
+        /Run \/dp-cto:work-plan first/,
+      );
     });
 
-    test("verify is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /Run \/dp-cto:start first/);
+    test("quality-fact-check is allowed (quality skill)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:quality-fact-check")));
     });
   });
 
   describe("planning stage", () => {
     beforeEach(() => seedCache(tmpDir, "planning"));
 
-    test("start is denied (in progress)", async () => {
+    test("work-plan is denied (in progress)", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:start")),
-        /Wait for \/dp-cto:start to complete/,
+        await runHook(HOOK, skillInput("dp-cto:work-plan")),
+        /Wait for \/dp-cto:work-plan to complete/,
       );
     });
 
-    test("execute is denied", async () => {
+    test("work-run is denied", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:execute")),
-        /Wait for \/dp-cto:start to complete/,
+        await runHook(HOOK, skillInput("dp-cto:work-run")),
+        /Wait for \/dp-cto:work-plan to complete/,
       );
     });
 
-    test("ralph is denied", async () => {
+    test("work-run-loop is denied", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:ralph")),
-        /Wait for \/dp-cto:start to complete/,
+        await runHook(HOOK, skillInput("dp-cto:work-run-loop")),
+        /Wait for \/dp-cto:work-plan to complete/,
       );
     });
 
-    test("ralph-cancel is allowed (safety valve)", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
+    test("work-stop-loop is allowed (safety valve)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-stop-loop")));
     });
   });
 
   describe("planned stage", () => {
     beforeEach(() => seedCache(tmpDir, "planned"));
 
-    test("execute is allowed", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:execute")));
+    test("work-run is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-run")));
     });
 
-    test("start is allowed (re-plan)", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+    test("work-plan is allowed (re-plan)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
     });
 
-    test("ralph is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:ralph")), /Run \/dp-cto:execute first/);
+    test("work-run-loop is denied", async () => {
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:work-run-loop")),
+        /Run \/dp-cto:work-run first/,
+      );
     });
 
-    test("polish is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:polish")), /Run \/dp-cto:execute first/);
+    test("work-polish is denied", async () => {
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:work-polish")),
+        /Run \/dp-cto:work-run first/,
+      );
     });
 
-    test("verify is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:verify")), /Run \/dp-cto:execute first/);
+    test("quality-fact-check is allowed (quality skill)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:quality-fact-check")));
     });
   });
 
   describe("executing stage", () => {
     beforeEach(() => seedCache(tmpDir, "executing"));
 
-    test("ralph is allowed", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph")));
+    test("work-run-loop is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-run-loop")));
     });
 
-    test("verify is allowed", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:verify")));
+    test("quality-fact-check is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:quality-fact-check")));
     });
 
-    test("polish is allowed", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+    test("work-polish is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-polish")));
     });
 
-    test("start is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:start")), /Implementation in progress/);
+    test("work-plan is denied", async () => {
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:work-plan")),
+        /Implementation in progress/,
+      );
     });
 
-    test("execute is denied", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /Implementation in progress/);
+    test("work-run is denied", async () => {
+      expectDenied(
+        await runHook(HOOK, skillInput("dp-cto:work-run")),
+        /Implementation in progress/,
+      );
     });
   });
 
   describe("polishing stage", () => {
     beforeEach(() => seedCache(tmpDir, "polishing"));
 
-    test("verify is allowed", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:verify")));
+    test("quality-fact-check is allowed", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:quality-fact-check")));
     });
 
-    test("start is denied", async () => {
+    test("work-plan is denied", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:start")),
-        /Polish in progress.*Wait for \/dp-cto:polish to complete/,
+        await runHook(HOOK, skillInput("dp-cto:work-plan")),
+        /Polish in progress.*Wait for \/dp-cto:work-polish to complete/,
       );
     });
 
-    test("execute is denied", async () => {
+    test("work-run is denied", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:execute")),
-        /Polish in progress.*Wait for \/dp-cto:polish to complete/,
+        await runHook(HOOK, skillInput("dp-cto:work-run")),
+        /Polish in progress.*Wait for \/dp-cto:work-polish to complete/,
       );
     });
 
-    test("ralph is denied", async () => {
+    test("work-run-loop is denied", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:ralph")),
-        /Polish in progress.*Wait for \/dp-cto:polish to complete/,
+        await runHook(HOOK, skillInput("dp-cto:work-run-loop")),
+        /Polish in progress.*Wait for \/dp-cto:work-polish to complete/,
       );
     });
 
-    test("ralph-cancel is allowed (safety valve)", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
+    test("work-stop-loop is allowed (safety valve)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-stop-loop")));
     });
 
-    test("polish is allowed (re-invocation)", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+    test("work-polish is allowed (re-invocation)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-polish")));
     });
   });
 
   describe("complete stage", () => {
     beforeEach(() => seedCache(tmpDir, "complete"));
 
-    test("start is allowed (new cycle)", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+    test("work-plan is allowed (new cycle)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
     });
 
-    test("polish is allowed (standalone re-polish)", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+    test("work-polish is allowed (standalone re-polish)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-polish")));
     });
 
-    test("execute is denied", async () => {
+    test("work-run is denied", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:execute")),
-        /Run \/dp-cto:start to begin a new feature/,
+        await runHook(HOOK, skillInput("dp-cto:work-run")),
+        /Run \/dp-cto:work-plan to begin a new feature/,
       );
     });
 
-    test("ralph is denied", async () => {
+    test("work-run-loop is denied", async () => {
       expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:ralph")),
-        /Run \/dp-cto:start to begin a new feature/,
+        await runHook(HOOK, skillInput("dp-cto:work-run-loop")),
+        /Run \/dp-cto:work-plan to begin a new feature/,
       );
     });
 
-    test("verify is denied", async () => {
-      expectDenied(
-        await runHook(HOOK, skillInput("dp-cto:verify")),
-        /Run \/dp-cto:start to begin a new feature/,
-      );
+    test("quality-fact-check is allowed (quality skill)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:quality-fact-check")));
     });
   });
 
-  describe("ralph-cancel safety valve", () => {
+  describe("work-stop-loop safety valve", () => {
     test.each(["idle", "planning", "planned", "executing", "polishing", "complete"])(
       "allowed from %s",
       async (stage) => {
         if (stage !== "idle") await seedCache(tmpDir, stage);
-        expectAllowed(await runHook(HOOK, skillInput("dp-cto:ralph-cancel")));
+        expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-stop-loop")));
       },
     );
   });
 
   describe("pre-execution cache writes", () => {
-    test("start writes planning stage to cache", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+    test("work-plan writes planning stage to cache", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
       expect(await getCacheStage(tmpDir)).toBe("planning");
     });
 
-    test("execute writes executing stage to cache", async () => {
+    test("work-run writes executing stage to cache", async () => {
       await seedCache(tmpDir, "planned");
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:execute")));
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-run")));
       expect(await getCacheStage(tmpDir)).toBe("executing");
     });
 
-    test("polish writes polishing stage to cache", async () => {
+    test("work-polish writes polishing stage to cache", async () => {
       await seedCache(tmpDir, "executing");
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:polish")));
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-polish")));
       expect(await getCacheStage(tmpDir)).toBe("polishing");
     });
 
-    test("execute from planned with active epic calls write_state", async () => {
+    test("work-park does not write pre-execution cache transition", async () => {
+      await seedCache(tmpDir, "executing");
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-park")));
+      expect(await getCacheStage(tmpDir)).toBe("executing");
+    });
+
+    test("work-run from planned with active epic calls write_state", async () => {
       await seedCache(tmpDir, "planned", "epic-42");
       const mockPath = await createMockBd(tmpDir);
       try {
@@ -273,7 +291,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
           "intercept-orchestration.sh",
           {
             tool_name: "Skill",
-            tool_input: { skill: "dp-cto:execute" },
+            tool_input: { skill: "dp-cto:work-run" },
             session_id: "s1",
             cwd: tmpDir,
           },
@@ -290,12 +308,15 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
 
   describe("dp-cto quality skills pass through", () => {
     test.each([
-      "dp-cto:tdd",
-      "dp-cto:debug",
-      "dp-cto:verify-done",
-      "dp-cto:review",
-      "dp-cto:sweep",
-      "dp-cto:cleanup",
+      "dp-cto:quality-red-green-refactor",
+      "dp-cto:quality-deep-debug",
+      "dp-cto:quality-check-done",
+      "dp-cto:quality-code-review",
+      "dp-cto:quality-sweep-code",
+      "dp-cto:quality-fact-check",
+      "dp-cto:ops-clean-slate",
+      "dp-cto:ops-show-board",
+      "dp-cto:ops-track-sprint",
     ])("%s is allowed from idle", async (skill) => {
       const r = await runHook(HOOK, skillInput(skill));
       expectAllowed(r);
@@ -308,12 +329,15 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       async (stage) => {
         await seedCache(tmpDir, stage);
         for (const skill of [
-          "dp-cto:tdd",
-          "dp-cto:debug",
-          "dp-cto:verify-done",
-          "dp-cto:review",
-          "dp-cto:sweep",
-          "dp-cto:cleanup",
+          "dp-cto:quality-red-green-refactor",
+          "dp-cto:quality-deep-debug",
+          "dp-cto:quality-check-done",
+          "dp-cto:quality-code-review",
+          "dp-cto:quality-sweep-code",
+          "dp-cto:quality-fact-check",
+          "dp-cto:ops-clean-slate",
+          "dp-cto:ops-show-board",
+          "dp-cto:ops-track-sprint",
         ]) {
           expectAllowed(await runHook(HOOK, skillInput(skill)));
         }
@@ -322,82 +346,102 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
 
     test("quality skills do not write cache transitions", async () => {
       await seedCache(tmpDir, "executing");
-      await runHook(HOOK, skillInput("dp-cto:tdd"));
+      await runHook(HOOK, skillInput("dp-cto:quality-red-green-refactor"));
       expect(await getCacheStage(tmpDir)).toBe("executing");
     });
   });
 
-  describe("board and sprint quality skill bypass", () => {
-    test("board passes from idle (no stage enforcement)", async () => {
-      const r = await runHook(HOOK, skillInput("dp-cto:board"));
+  describe("ops-show-board and ops-track-sprint quality skill bypass", () => {
+    test("ops-show-board passes from idle (no stage enforcement)", async () => {
+      const r = await runHook(HOOK, skillInput("dp-cto:ops-show-board"));
       expectAllowed(r);
       expect(r.stdout).toBe("");
       expect(r.json).toBeNull();
     });
 
-    test("board passes from executing (quality skill bypass)", async () => {
+    test("ops-show-board passes from executing (quality skill bypass)", async () => {
       await seedCache(tmpDir, "executing");
-      const r = await runHook(HOOK, skillInput("dp-cto:board"));
+      const r = await runHook(HOOK, skillInput("dp-cto:ops-show-board"));
       expectAllowed(r);
       expect(r.stdout).toBe("");
       expect(r.json).toBeNull();
     });
 
-    test("sprint passes from idle", async () => {
-      const r = await runHook(HOOK, skillInput("dp-cto:sprint"));
+    test("ops-track-sprint passes from idle", async () => {
+      const r = await runHook(HOOK, skillInput("dp-cto:ops-track-sprint"));
       expectAllowed(r);
       expect(r.stdout).toBe("");
       expect(r.json).toBeNull();
     });
 
-    test("sprint passes from executing", async () => {
+    test("ops-track-sprint passes from executing", async () => {
       await seedCache(tmpDir, "executing");
-      const r = await runHook(HOOK, skillInput("dp-cto:sprint"));
+      const r = await runHook(HOOK, skillInput("dp-cto:ops-track-sprint"));
       expectAllowed(r);
       expect(r.stdout).toBe("");
       expect(r.json).toBeNull();
     });
   });
 
-  describe("interrupt stage enforcement", () => {
-    test("interrupt allowed from executing", async () => {
+  describe("work-park stage enforcement", () => {
+    test("work-park allowed from executing", async () => {
       await seedCache(tmpDir, "executing");
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:interrupt")));
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-park")));
     });
 
-    test("interrupt allowed from polishing", async () => {
+    test("work-park allowed from polishing", async () => {
       await seedCache(tmpDir, "polishing");
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:interrupt")));
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-park")));
     });
 
-    test("interrupt denied from idle", async () => {
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:interrupt")), /start/i);
+    test("work-park denied from idle", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-park")), /work-plan/i);
     });
 
-    test("interrupt denied from planned", async () => {
+    test("work-park denied from planned", async () => {
       await seedCache(tmpDir, "planned");
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:interrupt")), /execute/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-park")), /work-run/i);
     });
 
-    test("interrupt denied from complete", async () => {
+    test("work-park denied from complete", async () => {
       await seedCache(tmpDir, "complete");
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:interrupt")), /start/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-park")), /work-plan/i);
     });
   });
 
-  describe("resume stage enforcement", () => {
-    test("resume allowed from idle", async () => {
-      expectAllowed(await runHook(HOOK, skillInput("dp-cto:resume")));
+  describe("work-unpark stage enforcement", () => {
+    test("work-unpark allowed from idle", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-unpark")));
     });
 
-    test("resume denied from executing", async () => {
+    test("work-unpark denied from executing", async () => {
       await seedCache(tmpDir, "executing");
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:resume")), /in progress/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-unpark")), /in progress/i);
     });
 
-    test("resume denied from planned", async () => {
+    test("work-unpark denied from planned", async () => {
       await seedCache(tmpDir, "planned");
-      expectDenied(await runHook(HOOK, skillInput("dp-cto:resume")), /execute/i);
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-unpark")), /work-run/i);
+    });
+  });
+
+  describe("suspended stage", () => {
+    beforeEach(() => seedCache(tmpDir, "suspended"));
+
+    test("work-plan is allowed (falls through to idle behavior)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
+    });
+
+    test("work-unpark is allowed (restore from suspended)", async () => {
+      expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-unpark")));
+    });
+
+    test("work-run is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-run")), /work-plan/i);
+    });
+
+    test("work-park is denied", async () => {
+      expectDenied(await runHook(HOOK, skillInput("dp-cto:work-park")), /work-plan/i);
     });
   });
 });
@@ -440,33 +484,33 @@ describe("Skill Interception (intercept-orchestration.sh)", () => {
 describe("Stage Transitions (stage-transition.sh)", () => {
   const hook = "stage-transition.sh";
 
-  test("start transitions to planned via cache", async () => {
+  test("work-plan transitions to planned via cache", async () => {
     await seedCache(tmpDir, "planning");
-    await runHook(hook, skillInput("dp-cto:start"));
+    await runHook(hook, skillInput("dp-cto:work-plan"));
     expect(await getCacheStage(tmpDir)).toBe("planned");
   });
 
-  test("execute transitions to polishing via cache", async () => {
+  test("work-run transitions to polishing via cache", async () => {
     await seedCache(tmpDir, "executing");
-    await runHook(hook, skillInput("dp-cto:execute"));
+    await runHook(hook, skillInput("dp-cto:work-run"));
     expect(await getCacheStage(tmpDir)).toBe("polishing");
   });
 
-  test("polish transitions to complete via cache", async () => {
+  test("work-polish transitions to complete via cache", async () => {
     await seedCache(tmpDir, "polishing");
-    await runHook(hook, skillInput("dp-cto:polish"));
+    await runHook(hook, skillInput("dp-cto:work-polish"));
     expect(await getCacheStage(tmpDir)).toBe("complete");
   });
 
-  test("ralph does not change cache stage", async () => {
+  test("work-run-loop does not change cache stage", async () => {
     await seedCache(tmpDir, "executing");
-    await runHook(hook, skillInput("dp-cto:ralph"));
+    await runHook(hook, skillInput("dp-cto:work-run-loop"));
     expect(await getCacheStage(tmpDir)).toBe("executing");
   });
 
-  test("verify does not change cache stage", async () => {
+  test("quality-fact-check does not change cache stage", async () => {
     await seedCache(tmpDir, "executing");
-    await runHook(hook, skillInput("dp-cto:verify"));
+    await runHook(hook, skillInput("dp-cto:quality-fact-check"));
     expect(await getCacheStage(tmpDir)).toBe("executing");
   });
 
@@ -476,7 +520,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
     expect(await getCacheStage(tmpDir)).toBe("executing");
   });
 
-  test("interrupt triggers suspend_state via stage-transition", async () => {
+  test("work-park triggers suspend_state via stage-transition", async () => {
     await seedCache(tmpDir, "executing", "epic-42");
     const mockPath = await createMockBd(tmpDir);
     try {
@@ -484,7 +528,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
         hook,
         {
           tool_name: "Skill",
-          tool_input: { skill: "dp-cto:interrupt" },
+          tool_input: { skill: "dp-cto:work-park" },
           tool_result: "done",
           session_id: "s1",
           cwd: tmpDir,
@@ -499,11 +543,11 @@ describe("Stage Transitions (stage-transition.sh)", () => {
     }
   });
 
-  test("resume does not modify cache via stage-transition", async () => {
+  test("work-unpark does not modify cache via stage-transition", async () => {
     await seedCache(tmpDir, "idle");
     const r = await runHook(hook, {
       tool_name: "Skill",
-      tool_input: { skill: "dp-cto:resume" },
+      tool_input: { skill: "dp-cto:work-unpark" },
       tool_result: "done",
       session_id: "s1",
       cwd: tmpDir,
@@ -512,28 +556,74 @@ describe("Stage Transitions (stage-transition.sh)", () => {
     const stage = await getCacheStage(tmpDir);
     expect(stage).toBe("idle");
   });
+
+  test("work-plan with active epic calls write_state for planned", async () => {
+    await seedCache(tmpDir, "planning", "epic-99");
+    const mockPath = await createMockBd(tmpDir);
+    try {
+      const r = await runHook(
+        hook,
+        {
+          tool_name: "Skill",
+          tool_input: { skill: "dp-cto:work-plan" },
+          tool_result: "done",
+          session_id: "s1",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
+      expect(r.exitCode).toBe(0);
+      const stage = await getCacheStage(tmpDir);
+      expect(stage).toBe("planned");
+    } finally {
+      await rm(join(tmpDir, ".mock-bin"), { recursive: true, force: true });
+    }
+  });
+
+  test("work-polish with active epic calls write_state for complete", async () => {
+    await seedCache(tmpDir, "polishing", "epic-77");
+    const mockPath = await createMockBd(tmpDir);
+    try {
+      const r = await runHook(
+        hook,
+        {
+          tool_name: "Skill",
+          tool_input: { skill: "dp-cto:work-polish" },
+          tool_result: "done",
+          session_id: "s1",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
+      expect(r.exitCode).toBe(0);
+      const stage = await getCacheStage(tmpDir);
+      expect(stage).toBe("complete");
+    } finally {
+      await rm(join(tmpDir, ".mock-bin"), { recursive: true, force: true });
+    }
+  });
 });
 
 // ─── Edge Cases ─────────────────────────────────────────────────────────────
 
 describe("Edge Cases", () => {
-  test("missing cache file defaults to idle — start allowed", async () => {
-    expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+  test("missing cache file defaults to idle — work-plan allowed", async () => {
+    expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
   });
 
-  test("missing cache file defaults to idle — execute denied", async () => {
-    expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")));
+  test("missing cache file defaults to idle — work-run denied", async () => {
+    expectDenied(await runHook(HOOK, skillInput("dp-cto:work-run")));
   });
 
-  test("corrupt cache JSON defaults to idle — start allowed", async () => {
+  test("corrupt cache JSON defaults to idle — work-plan allowed", async () => {
     await seedCorruptCache(tmpDir);
-    expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+    expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
   });
 
   test("missing session_id does not crash and creates no side-effect files", async () => {
     const r = await runHook(HOOK, {
       tool_name: "Skill",
-      tool_input: { skill: "dp-cto:start" },
+      tool_input: { skill: "dp-cto:work-plan" },
       cwd: tmpDir,
     });
     expect(r.exitCode).toBe(0);
@@ -541,14 +631,14 @@ describe("Edge Cases", () => {
     expect(files).toEqual([]);
   });
 
-  test("unknown stage value treated as idle — start allowed", async () => {
+  test("unknown stage value treated as idle — work-plan allowed", async () => {
     await seedCache(tmpDir, "bogus");
-    expectAllowed(await runHook(HOOK, skillInput("dp-cto:start")));
+    expectAllowed(await runHook(HOOK, skillInput("dp-cto:work-plan")));
   });
 
-  test("unknown stage value treated as idle — execute denied", async () => {
+  test("unknown stage value treated as idle — work-run denied", async () => {
     await seedCache(tmpDir, "bogus");
-    expectDenied(await runHook(HOOK, skillInput("dp-cto:execute")), /start/i);
+    expectDenied(await runHook(HOOK, skillInput("dp-cto:work-run")), /work-plan/i);
   });
 });
 
@@ -786,7 +876,7 @@ describe("Completion Gate (completion-gate.sh)", () => {
     expect(r.json).not.toBeNull();
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
-    expect(ctx).toMatch(/verify.*verify-done/i);
+    expect(ctx).toMatch(/quality-check-done/i);
   });
 
   test("Agent output with claim and test evidence passes silently", async () => {
@@ -884,7 +974,9 @@ describe("jq-missing fail-open", () => {
     await symlink(bashPath, join(jqFreePath, "bash"));
     for (const bin of ["cat", "dirname", "basename", "tr", "grep", "tail", "mkdir"]) {
       try {
-        const realPath = execFileSync("which", [bin], { encoding: "utf-8" }).trim();
+        const realPath = execFileSync("which", [bin], {
+          encoding: "utf-8",
+        }).trim();
         if (realPath) await symlink(realPath, join(jqFreePath, bin));
       } catch {
         /* skip if not found */
@@ -920,7 +1012,12 @@ describe("jq-missing fail-open", () => {
             json = JSON.parse(trimmed);
           } catch {}
         }
-        resolve({ stdout: trimmed, stderr: stderr.trim(), exitCode: code ?? 1, json });
+        resolve({
+          stdout: trimmed,
+          stderr: stderr.trim(),
+          exitCode: code ?? 1,
+          json,
+        });
       });
     });
   }
@@ -933,7 +1030,7 @@ describe("jq-missing fail-open", () => {
   ])("%s exits 0 when jq is missing", async (hook) => {
     const r = await runHookWithoutJq(hook, {
       tool_name: "Skill",
-      tool_input: { skill: "dp-cto:start" },
+      tool_input: { skill: "dp-cto:work-plan" },
       session_id: "test-session",
       cwd: tmpDir,
     });

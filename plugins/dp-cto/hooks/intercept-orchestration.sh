@@ -37,13 +37,13 @@ case "$SKILL_NAME" in
     SKILL="${SKILL_NAME#dp-cto:}"
 
     # Safety valve — always allowed
-    if [ "$SKILL" = "ralph-cancel" ]; then
+    if [ "$SKILL" = "work-stop-loop" ]; then
       exit 0
     fi
 
-    # Quality skills — side-effect-free, no stage transition, pass silently
+    # Quality / ops skills — side-effect-free, no stage transition, pass silently
     case "$SKILL" in
-      tdd|debug|verify-done|review|sweep|cleanup|board|sprint)
+      quality-*|ops-*)
         exit 0
         ;;
     esac
@@ -56,42 +56,42 @@ case "$SKILL_NAME" in
     case "$CURRENT_STAGE" in
       idle)
         case "$SKILL" in
-          start|resume) ALLOWED=true ;;
-          *) REASON="Run /dp-cto:start first to create a plan." ;;
+          work-plan|work-unpark) ALLOWED=true ;;
+          *) REASON="Run /dp-cto:work-plan first to create a plan." ;;
         esac
         ;;
       planning)
-        REASON="A plan is being created. Wait for /dp-cto:start to complete."
+        REASON="A plan is being created. Wait for /dp-cto:work-plan to complete."
         ;;
       planned)
         case "$SKILL" in
-          execute|start) ALLOWED=true ;;
-          *) REASON="Run /dp-cto:execute first to begin implementation." ;;
+          work-run|work-plan) ALLOWED=true ;;
+          *) REASON="Run /dp-cto:work-run first to begin implementation." ;;
         esac
         ;;
       executing)
         case "$SKILL" in
-          ralph|verify|polish|interrupt) ALLOWED=true ;;
-          *) REASON="Implementation in progress. Complete execution first, or use /dp-cto:ralph-cancel to abort." ;;
+          work-run-loop|quality-fact-check|work-polish|work-park) ALLOWED=true ;;
+          *) REASON="Implementation in progress. Complete execution first, or use /dp-cto:work-stop-loop to abort." ;;
         esac
         ;;
       polishing)
         case "$SKILL" in
-          verify|polish|interrupt) ALLOWED=true ;;
-          *) REASON="Polish in progress. Wait for /dp-cto:polish to complete." ;;
+          quality-fact-check|work-polish|work-park) ALLOWED=true ;;
+          *) REASON="Polish in progress. Wait for /dp-cto:work-polish to complete." ;;
         esac
         ;;
       complete)
         case "$SKILL" in
-          start|polish) ALLOWED=true ;;
-          *) REASON="Cycle is complete. Run /dp-cto:start to begin a new feature." ;;
+          work-plan|work-polish) ALLOWED=true ;;
+          *) REASON="Cycle is complete. Run /dp-cto:work-plan to begin a new feature." ;;
         esac
         ;;
       *)
         # Unknown stage — treat as idle
         case "$SKILL" in
-          start|resume) ALLOWED=true ;;
-          *) REASON="Run /dp-cto:start first to create a plan." ;;
+          work-plan|work-unpark) ALLOWED=true ;;
+          *) REASON="Run /dp-cto:work-plan first to create a plan." ;;
         esac
         ;;
     esac
@@ -100,11 +100,11 @@ case "$SKILL_NAME" in
       # Write pre-execution transient stage
       ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
       case "$SKILL" in
-        start)
+        work-plan)
           CACHE=$(read_cache)
           write_cache "$(echo "$CACHE" | jq -c '.stage = "planning"')"
           ;;
-        execute)
+        work-run)
           if [ -n "$ACTIVE_EPIC" ]; then
             write_state "$ACTIVE_EPIC" "executing" 2>/dev/null || true
           else
@@ -112,7 +112,7 @@ case "$SKILL_NAME" in
             write_cache "$(echo "$CACHE" | jq -c '.stage = "executing"')"
           fi
           ;;
-        polish)
+        work-polish)
           if [ -n "$ACTIVE_EPIC" ]; then
             write_state "$ACTIVE_EPIC" "polishing" 2>/dev/null || true
           else
@@ -136,7 +136,7 @@ esac
 case "$SKILL_NAME" in
   *parallel*|*dispatch*|*orchestrat*|*worktree*|*subagent*)
     jq -n --arg skill "$SKILL_NAME" \
-      '{systemMessage: ("WARNING: Unknown skill " + $skill + " has an orchestration-adjacent name. If this is an orchestration skill, use /dp-cto:start or /dp-cto:execute instead. Allowing execution.")}'
+      '{systemMessage: ("WARNING: Unknown skill " + $skill + " has an orchestration-adjacent name. If this is an orchestration skill, use /dp-cto:work-plan or /dp-cto:work-run instead. Allowing execution.")}'
     exit 0
     ;;
 esac

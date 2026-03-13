@@ -34,8 +34,8 @@ source "$(dirname "$0")/lib-state.sh"
 SKILL="${SKILL_NAME#dp-cto:}"
 
 case "$SKILL" in
-  start)
-    # Read active epic — start skill should have set it during execution
+  work-plan)
+    # Read active epic — work-plan skill should have set it during execution
     ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
       write_state "$ACTIVE_EPIC" "planned" 2>/dev/null || true
@@ -44,7 +44,7 @@ case "$SKILL" in
       write_cache "$(echo "$CACHE" | jq -c '.stage = "planned"')" 2>/dev/null || true
     fi
     ;;
-  execute)
+  work-run)
     ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
       write_state "$ACTIVE_EPIC" "polishing" 2>/dev/null || true
@@ -53,7 +53,7 @@ case "$SKILL" in
       write_cache "$(echo "$CACHE" | jq -c '.stage = "polishing"')" 2>/dev/null || true
     fi
     ;;
-  polish)
+  work-polish)
     ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
       write_state "$ACTIVE_EPIC" "complete" 2>/dev/null || true
@@ -62,19 +62,19 @@ case "$SKILL" in
       write_cache "$(echo "$CACHE" | jq -c '.stage = "complete"')" 2>/dev/null || true
     fi
     ;;
-  interrupt)
+  work-park)
     ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
       suspend_state "$ACTIVE_EPIC" 2>/dev/null || true
     fi
     ;;
-  resume)
-    # resume_state is called by the skill itself (needs epic selection logic).
+  work-unpark)
+    # restore state is called by the skill itself (needs epic selection logic).
     # No automatic transition here — the skill handles state restoration.
     exit 0
     ;;
-  # Quality / side-effect skills — no stage transition
-  tdd|debug|verify-done|review|sweep|cleanup|board|sprint)
+  # Quality / ops skills — no stage transition
+  quality-*|ops-*)
     exit 0
     ;;
   *)
