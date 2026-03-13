@@ -21,7 +21,7 @@ pnpm run release -- patch   # release: patch|minor|major|x.y.z (scripts/release.
 
 ## Gotchas
 
-- `CLAUDE.md` is globally gitignored — do not attempt `git add CLAUDE.md`
+- `CLAUDE.md` is globally gitignored but negated in this repo's `.gitignore` — it IS tracked
 - `category` goes in marketplace.json only (NOT in plugin.json — rejected by official validator)
 - `pnpm run release -- <bump>` prompts for confirmation — pipe `echo "y"` for non-interactive use
 - All hook scripts must pass `shellcheck -S warning`
@@ -32,3 +32,7 @@ pnpm run release -- patch   # release: patch|minor|major|x.y.z (scripts/release.
 claude plugin marketplace add raisedadead/dotplugins
 claude plugin install dp-cto@dotplugins
 ```
+
+## Prerequisites
+
+After installing the plugin, run `bd setup claude --project` in your repo to install beads native hooks (SessionStart context injection + PreCompact state preservation). dp-cto relies on these for full functionality.

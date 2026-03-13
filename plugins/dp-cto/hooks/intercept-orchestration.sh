@@ -17,9 +17,21 @@ if [ "$TOOL_NAME" != "Skill" ]; then
   exit 0
 fi
 
-# Stage enforcement for dp-cto skills
-# shellcheck source=lib-state.sh
-source "$(dirname "$0")/lib-state.sh"
+# Get active dp-cto epic stage directly from beads
+# Returns "stage\tepic_id" as TSV, or "idle" if nothing found
+get_dp_cto_state() {
+  if ! command -v bd &>/dev/null; then
+    echo "idle"
+    return 0
+  fi
+  local result
+  result=$(bd query "label=dp-cto:planning OR label=dp-cto:planned OR label=dp-cto:executing OR label=dp-cto:polishing OR label=dp-cto:suspended" --json 2>/dev/null) || { echo "idle"; return 0; }
+  if [ -z "$result" ] || [ "$result" = "[]" ]; then
+    echo "idle"
+    return 0
+  fi
+  echo "$result" | jq -r '.[0] | [(.labels // [] | .[] | select(startswith("dp-cto:")) | ltrimstr("dp-cto:")), .id] | @tsv' 2>/dev/null || echo "idle"
+}
 
 case "$SKILL_NAME" in
   dp-cto:*)
@@ -48,7 +60,14 @@ case "$SKILL_NAME" in
         ;;
     esac
 
-    CURRENT_STAGE=$(read_cache | jq -r '.stage // "idle"' 2>/dev/null)
+    STATE_LINE=$(get_dp_cto_state)
+    if [ "$STATE_LINE" = "idle" ]; then
+      CURRENT_STAGE="idle"
+      ACTIVE_EPIC=""
+    else
+      CURRENT_STAGE=$(echo "$STATE_LINE" | cut -f1)
+      ACTIVE_EPIC=$(echo "$STATE_LINE" | cut -f2)
+    fi
     CURRENT_STAGE="${CURRENT_STAGE:-idle}"
 
     ALLOWED=false
@@ -97,27 +116,20 @@ case "$SKILL_NAME" in
     esac
 
     if [ "$ALLOWED" = "true" ]; then
-      # Write pre-execution transient stage
-      ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
       case "$SKILL" in
         work-plan)
-          CACHE=$(read_cache)
-          write_cache "$(echo "$CACHE" | jq -c '.stage = "planning"')"
+          if [ -n "$ACTIVE_EPIC" ]; then
+            bd set-state "$ACTIVE_EPIC" "dp-cto=planning" 2>/dev/null || true
+          fi
           ;;
         work-run)
           if [ -n "$ACTIVE_EPIC" ]; then
-            write_state "$ACTIVE_EPIC" "executing" 2>/dev/null || true
-          else
-            CACHE=$(read_cache)
-            write_cache "$(echo "$CACHE" | jq -c '.stage = "executing"')"
+            bd set-state "$ACTIVE_EPIC" "dp-cto=executing" 2>/dev/null || true
           fi
           ;;
         work-polish)
           if [ -n "$ACTIVE_EPIC" ]; then
-            write_state "$ACTIVE_EPIC" "polishing" 2>/dev/null || true
-          else
-            CACHE=$(read_cache)
-            write_cache "$(echo "$CACHE" | jq -c '.stage = "polishing"')"
+            bd set-state "$ACTIVE_EPIC" "dp-cto=polishing" 2>/dev/null || true
           fi
           ;;
       esac

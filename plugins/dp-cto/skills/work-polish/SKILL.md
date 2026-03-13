@@ -14,15 +14,17 @@ If you catch yourself reading code to review it, STOP. Spawn a specialist agent 
 
 ## Anti-Rationalization
 
-| Thought                                | Reality                                                          |
-| -------------------------------------- | ---------------------------------------------------------------- |
-| "Tests pass, we're done"               | Tests passing != production-ready. Run the lenses.               |
-| "I'll just do a quick review myself"   | You are CTO. Spawn specialist agents.                            |
-| "This is a small change, skip polish"  | Small changes can have security/quality issues too.              |
-| "I'll fix these issues myself"         | Delegate fixes to teammates.                                     |
-| "One lens is enough"                   | Each lens catches different classes of issues. Run all selected. |
-| "Suggestions aren't worth reporting"   | Let the user decide. Report everything with severity.            |
-| "I'll skip the fix round, just report" | CRITICAL and WARNING findings must be fixed before completing.   |
+| Thought                                                 | Reality                                                                                                      |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| "Tests pass, we're done"                                | Tests passing != production-ready. Run the lenses.                                                           |
+| "I'll just do a quick review myself"                    | You are CTO. Spawn specialist agents.                                                                        |
+| "This is a small change, skip polish"                   | Small changes can have security/quality issues too.                                                          |
+| "I'll fix these issues myself"                          | Delegate fixes to teammates.                                                                                 |
+| "One lens is enough"                                    | Each lens catches different classes of issues. Run all selected.                                             |
+| "Suggestions aren't worth reporting"                    | Let the user decide. Report everything with severity.                                                        |
+| "I'll skip the fix round, just report"                  | CRITICAL and WARNING findings must be fixed before completing.                                               |
+| "The reviewer agent already checked, no receipt needed" | Receipts track what was reviewed and what was found. The coordinator needs this data for the findings table. |
+| "Zero findings means the review was thorough"           | Zero findings could also mean the reviewer was lazy. Check that the reviewer actually read the files.        |
 
 ## Stage Enforcement
 
@@ -78,8 +80,12 @@ Show the user the selected lenses and detected quality-gate command, then procee
 1. Read the active epic from the local cache (`.claude/dp-cto/cache.json`). If no active epic is found, check `bd query` for epics with a `dp-cto:polishing` label. If still not found, skip this step — the git diff in step 2 provides sufficient scope.
 2. Run `git diff main...HEAD --name-only` to get all files changed in this cycle
    - If no diff against main (e.g., standalone invocation), use `git diff HEAD~5 --name-only` as fallback
-3. Group files by directory/module for targeted review
-4. If no changed files found, say "No changed files detected. Nothing to polish." and STOP.
+3. Generate the full diff for review agents:
+   - Run `git diff main...HEAD` (or `git diff HEAD~5` fallback) to capture the full diff
+   - If diff exceeds 50,000 characters, split by file: generate per-file diffs and distribute to agents based on their lens focus
+   - Store the diff output for use in Step 2 agent prompts
+4. Group files by directory/module for targeted review
+5. If no changed files found, say "No changed files detected. Nothing to polish." and STOP.
 
 ## Step 2: Spawn Parallel Review Agents
 
@@ -93,15 +99,31 @@ Each agent receives this prompt template (fill in lens-specific parts):
 You are a specialist code reviewer focused EXCLUSIVELY on: {LENS_NAME}
 
 ## Your Focus
-{LENS_DESCRIPTION}
+{LENS_ABBREVIATED — use the abbreviated 1-line description below}
 
-## Files to Review
-{FILE_LIST — one per line, only files changed in this cycle}
+Abbreviated lens descriptions (use the one matching your lens):
+- Security: "Injection risks, auth gaps, secrets, OWASP top 10, dependency vulnerabilities"
+- Simplification: "Unused imports/exports, dead code, over-abstraction, redundant logic"
+- Test Gaps: "Untested error paths, missing edge cases, mock-heavy tests hiding bugs"
+- Linting: "Style inconsistencies, naming violations, formatting drift"
+- Performance: "N+1 queries, unnecessary re-renders, algorithmic inefficiency"
+- Docs: "Stale comments, misleading docstrings, outdated README sections"
+
+## Changes to Review
+
+Below is the git diff of all changes in this cycle. Review ONLY this diff through your specific lens.
+Do NOT read full files unless you need surrounding context for a specific finding.
+
+\`\`\`diff
+{DIFF_OUTPUT}
+\`\`\`
 
 ## Instructions
-1. Read each file listed above
-2. Review ONLY through your specific lens — ignore issues outside your focus
-3. For each finding, output in this EXACT format:
+1. Review the diff above through your specific lens
+2. If you need more context around a specific change, read that file
+3. Focus on CHANGED lines — do not review unchanged code
+4. Review ONLY through your specific lens — ignore issues outside your focus
+5. For each finding, output in this EXACT format:
 
 ### [{SEVERITY}] {file_path}:{line_number} — {title}
 {description of the issue}
@@ -117,7 +139,30 @@ You are a specialist code reviewer focused EXCLUSIVELY on: {LENS_NAME}
 - Do NOT report issues outside your lens focus.
 - If you find no issues, report: "No {LENS_NAME} issues found."
 - Be specific: include file paths, line numbers, and concrete fix suggestions.
+
+## Review Summary
+
+After listing all findings, end with:
+
+## Review Receipt
+
+- **Lens**: {your lens name}
+- **Files Reviewed**: {count}
+- **Findings**: {total count}
+- **Critical**: {count}
+- **Warning**: {count}
+- **Suggestion**: {count}
+- **Clean**: YES | NO
 ```
+
+**Token efficiency**: Passing the diff instead of file names saves significant context budget. Agents see exactly what changed rather than reading entire files. For large diffs (>50K chars), split by file and give each agent only the files relevant to their lens:
+
+- Security: all files
+- Simplification: all files
+- Test Gaps: test files + the code they test
+- Linting: all files
+- Performance: non-test files
+- Docs: docs + files with doc comments
 
 **Max agents**: one per lens (up to 6 concurrent).
 

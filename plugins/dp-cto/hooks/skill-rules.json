@@ -1,0 +1,42 @@
+[
+  {
+    "pattern": "debug|error|failing|broken|crash|bug|exception|trace",
+    "skill": "dp-cto:quality-deep-debug",
+    "description": "Structured root-cause debugging with 4-phase investigation"
+  },
+  {
+    "pattern": "plan|feature|build|implement|design|architect|spec",
+    "skill": "dp-cto:work-plan",
+    "description": "Brainstorm approaches and create a beads-backed implementation plan"
+  },
+  {
+    "pattern": "review|polish|cleanup|quality|audit",
+    "skill": "dp-cto:work-polish",
+    "description": "Multi-perspective code review with 6 configurable lenses"
+  },
+  {
+    "pattern": "sweep|drift|dead.?code|unused|stale|entropy",
+    "skill": "dp-cto:quality-sweep-code",
+    "description": "Detect and fix pattern drift across the codebase"
+  },
+  {
+    "pattern": "test|tdd|red.?green|failing.?test",
+    "skill": "dp-cto:quality-red-green-refactor",
+    "description": "TDD discipline: write failing test first, then implement"
+  },
+  {
+    "pattern": "done|complete|verify|check|prove|evidence",
+    "skill": "dp-cto:quality-check-done",
+    "description": "Evidence-based completion verification before claiming done"
+  },
+  {
+    "pattern": "sprint|board|status|progress|dashboard",
+    "skill": "dp-cto:ops-show-board",
+    "description": "Read-only project dashboard showing work state and progress"
+  },
+  {
+    "pattern": "loop|iterate|ralph|autonomous|repeat",
+    "skill": "dp-cto:work-run-loop",
+    "description": "Iterative autonomous loop with fresh context per iteration"
+  }
+]

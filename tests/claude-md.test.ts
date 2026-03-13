@@ -13,96 +13,85 @@ describe("CLAUDE.md documentation", () => {
     content = await readFile(CLAUDE_MD, "utf-8");
   });
 
-  describe("plan-heavy dispatch", () => {
-    test("documents beads-based agent prompt storage", () => {
-      expect(content).toMatch(/bd create/);
-      expect(content).toMatch(/bd edit.*--body/);
-      expect(content).toMatch(/bd ready/);
-      expect(content).toMatch(/bd show/);
+  describe("project description", () => {
+    test("identifies as plugin marketplace monorepo", () => {
+      expect(content).toMatch(/plugin marketplace/i);
+      expect(content).toMatch(/monorepo/);
     });
 
-    test("documents execute as near-mechanical dispatcher", () => {
-      expect(content).toMatch(/near-mechanical dispatcher/);
+    test("identifies dp-cto as the single plugin", () => {
+      expect(content).toMatch(/dp-cto/);
     });
 
-    test("documents verbatim prompt passing to Agent calls", () => {
-      expect(content).toMatch(/verbatim/);
-    });
-  });
-
-  describe("session recovery", () => {
-    test("has session recovery section", () => {
-      expect(content).toMatch(/### Key design: session recovery/);
+    test("documents fail-open hook behavior", () => {
+      expect(content).toMatch(/fail open/i);
     });
 
-    test("documents breadcrumb file path", () => {
-      expect(content).toMatch(/\.claude\/dp-cto\/active\.json/);
-    });
-
-    test("documents breadcrumb lifecycle", () => {
-      expect(content).toMatch(/planned/);
-      expect(content).toMatch(/complete/);
-    });
-
-    test("documents beads-backed recovery with fallback", () => {
-      expect(content).toMatch(/sync_from_beads/);
-      expect(content).toMatch(/fallback/);
-    });
-
-    test("documents suspended epics in recovery", () => {
-      expect(content).toMatch(/suspended/);
-      expect(content).toMatch(/cache\.json/);
-    });
-
-    test("documents SessionEnd as no-op in v4.0", () => {
-      expect(content).toMatch(/no-op in v4\.0/i);
+    test("documents no build step", () => {
+      expect(content).toMatch(/[Nn]o build step/);
     });
   });
 
-  describe("hands-off execution", () => {
-    test("documents no confirmation pauses during execute", () => {
-      expect(content).toMatch(/hands-off execution/i);
-      expect(content).toMatch(/no commit checkpoints/i);
+  describe("commands", () => {
+    test("documents test command", () => {
+      expect(content).toMatch(/pnpm test/);
+    });
+
+    test("documents lint command", () => {
+      expect(content).toMatch(/pnpm run lint/);
+    });
+
+    test("documents format check command", () => {
+      expect(content).toMatch(/pnpm run fmt:check/);
+    });
+
+    test("documents validate command", () => {
+      expect(content).toMatch(/pnpm run validate/);
+    });
+
+    test("documents release command", () => {
+      expect(content).toMatch(/pnpm run release/);
+    });
+  });
+
+  describe("versioning", () => {
+    test("documents three version locations", () => {
+      expect(content).toMatch(/marketplace\.json/);
+      expect(content).toMatch(/plugin\.json/);
+    });
+
+    test("warns against manual version editing", () => {
+      expect(content).toMatch(/[Nn]ever edit versions manually/);
     });
   });
 
   describe("gotchas", () => {
-    test("documents cache.json as local state file gotcha", () => {
-      expect(content).toMatch(/cache\.json.*local state file.*not per-session/);
+    test("documents category restriction", () => {
+      expect(content).toMatch(/category.*marketplace\.json/);
+    });
+
+    test("documents release confirmation prompt", () => {
+      expect(content).toMatch(/prompts for confirmation/);
+    });
+
+    test("documents shellcheck requirement", () => {
+      expect(content).toMatch(/shellcheck/);
+    });
+  });
+
+  describe("installation", () => {
+    test("documents marketplace add command", () => {
+      expect(content).toMatch(/claude plugin marketplace add/);
+    });
+
+    test("documents plugin install command", () => {
+      expect(content).toMatch(/claude plugin install dp-cto/);
     });
   });
 
   describe("prerequisites", () => {
-    test("documents jq as required dependency", () => {
-      expect(content).toMatch(/`jq`.*Yes.*runtime/);
-    });
-
-    test("documents bd CLI as required with graceful degradation", () => {
-      expect(content).toMatch(/`bd`.*Yes.*required/i);
-      expect(content).toMatch(/degrade gracefully/i);
-    });
-
-    test("documents fail-open behavior", () => {
-      expect(content).toMatch(/fail open/i);
-    });
-  });
-
-  describe("stage machine", () => {
-    test("has stage machine section", () => {
-      expect(content).toMatch(/### Key design: stage machine/);
-    });
-
-    test("documents all stages including planning transient", () => {
-      expect(content).toMatch(/planning/);
-      expect(content).toMatch(/planned/);
-      expect(content).toMatch(/executing/);
-      expect(content).toMatch(/polishing/);
-      expect(content).toMatch(/complete/);
-    });
-
-    test("documents transient vs resting states", () => {
-      expect(content).toMatch(/[Tt]ransient/);
-      expect(content).toMatch(/[Rr]esting/);
+    test("documents bd setup claude requirement", () => {
+      expect(content).toMatch(/bd setup claude/);
     });
   });
 });

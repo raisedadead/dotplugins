@@ -14,15 +14,17 @@ If you catch yourself writing application code, STOP. Spawn an agent for that.
 
 ## Anti-Rationalization
 
-| Thought                                      | Reality                                                            |
-| -------------------------------------------- | ------------------------------------------------------------------ |
-| "I'll just do this small piece myself"       | You are coordinator. Never implement.                              |
-| "The agent failed, I'll fix it"              | Spawn next iteration. Track failure in progress file.              |
-| "Completion promise looks close enough"      | ONLY declare done when promise appears verbatim in agent output.   |
-| "Quality gate failed but it's minor"         | Failed gate = failed iteration. Log it, spawn again.               |
-| "I'll skip the progress file this iteration" | Progress file is the only cross-iteration memory. Always write it. |
-| "Max iterations is just a suggestion"        | Max iterations is a hard stop. Never exceed it.                    |
-| "I'll run multiple iterations in parallel"   | This is a sequential loop. One active iteration at a time.         |
+| Thought                                          | Reality                                                                                                 |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| "I'll just do this small piece myself"           | You are coordinator. Never implement.                                                                   |
+| "The agent failed, I'll fix it"                  | Spawn next iteration. Track failure in progress file.                                                   |
+| "Completion promise looks close enough"          | ONLY declare done when promise appears verbatim in agent output.                                        |
+| "Quality gate failed but it's minor"             | Failed gate = failed iteration. Log it, spawn again.                                                    |
+| "I'll skip the progress file this iteration"     | Progress file is the only cross-iteration memory. Always write it.                                      |
+| "Max iterations is just a suggestion"            | Max iterations is a hard stop. Never exceed it.                                                         |
+| "I'll run multiple iterations in parallel"       | This is a sequential loop. One active iteration at a time.                                              |
+| "The receipt is just bookkeeping, I can skip it" | Receipts are how the coordinator validates work. Missing receipts trigger warnings. Always produce one. |
+| "Prior iterations already tried everything"      | Read the log. Identify what SPECIFICALLY failed. Try a different approach, not the same one.            |
 
 ## Step 0: Resolve Configuration
 
@@ -170,17 +172,13 @@ You have NO memory of prior iterations. Read the progress file FIRST.
 Read this file IMMEDIATELY before doing anything else:
 `.claude/ralph/{SESSION_ID}.md`
 
-It contains the full task description and a log of all prior iterations including
-what was done, what worked, and what failed. Use this to avoid repeating mistakes
-and to build on prior progress.
+Contains task description and iteration history. Read before working.
 
 ## Instructions
 
-1. Read `.claude/ralph/{SESSION_ID}.md` NOW.
-2. Understand what prior iterations accomplished (if any).
-3. Work on the task. Make real changes to files.
-4. Run tests or verification commands to confirm your changes work.
-5. Do NOT declare done unless the work is genuinely complete.
+1. Read `.claude/ralph/{SESSION_ID}.md` NOW. Understand what prior iterations accomplished.
+2. Work on the task. Make real changes to files. Run tests or verification commands to confirm.
+3. Output a completion report with receipt (see below). Do NOT declare done unless genuinely complete.
 
 ## Completion Report
 
@@ -204,6 +202,30 @@ YES or NO
 - Do NOT modify `.claude/ralph/{SESSION_ID}.md` — the coordinator manages this file.
 - Work in the current directory.
 - Be thorough but focused. Do not expand scope beyond the task.
+
+## When Stuck
+
+If you encounter an unexpected error:
+1. Read the error completely. Do not skip stack traces.
+2. Check the iteration log in the progress file for what prior iterations tried.
+3. If the same approach failed in a prior iteration, try a DIFFERENT approach.
+4. If stuck after 2 attempts, report what you tried in your Completion Report with Status: FAIL.
+5. Never silently ignore failures.
+
+## Completion Receipt Requirement
+
+When you finish your work, include this section at the END of your output:
+
+## Completion Receipt
+
+- **Task**: work-run-loop iteration {N}
+- **Status**: PASS | FAIL
+- **Files Modified**: [comma-separated list]
+- **Verification Command**: [exact command you ran]
+- **Verification Output**: [first 500 chars]
+- **Exit Code**: [0 or actual code]
+- **Acceptance Criteria Met**: YES | NO | PARTIAL
+- **Unresolved Issues**: [list or "None"]
 ```
 
 **If `--completion-promise` is set**, append this line to the `### Complete` section before sending:

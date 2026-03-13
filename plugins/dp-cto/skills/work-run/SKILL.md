@@ -13,16 +13,20 @@ If you catch yourself writing application code, STOP. You are delegating, not co
 
 ## Anti-Rationalization
 
-| Thought                                       | Reality                                                                                   |
-| --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| "I'll just fix this one small thing myself"   | You are CTO. Delegate even small fixes.                                                   |
-| "It's faster if I do it"                      | Faster now, unscalable. Delegate.                                                         |
-| "This doesn't need a plan"                    | dp-cto:work-run requires a plan. Run /dp-cto:work-plan first.                             |
-| "I can skip review for this trivial change"   | Trivial changes cause subtle bugs. Review everything.                                     |
-| "Tests pass, review unnecessary"              | Tests verify behavior, review verifies quality. Both required.                            |
-| "I'll set up worktrees / ask about isolation" | Isolation is per-task via [subagent:isolated] tags in the plan. Don't ask, don't default. |
-| "I'll dispatch 5+ agents to go faster"        | More agents = more overhead. Batch in rounds of 3-4.                                      |
-| "I'll create a team for this task"            | Use subagent. Teams are only for [collaborative] tasks.                                   |
+| Thought                                                         | Reality                                                                                              |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| "I'll just fix this one small thing myself"                     | You are CTO. Delegate even small fixes.                                                              |
+| "It's faster if I do it"                                        | Faster now, unscalable. Delegate.                                                                    |
+| "This doesn't need a plan"                                      | dp-cto:work-run requires a plan. Run /dp-cto:work-plan first.                                        |
+| "I can skip review for this trivial change"                     | Trivial changes cause subtle bugs. Review everything.                                                |
+| "Tests pass, review unnecessary"                                | Tests verify behavior, review verifies quality. Both required.                                       |
+| "I'll set up worktrees / ask about isolation"                   | Isolation is per-task via [subagent:isolated] tags in the plan. Don't ask, don't default.            |
+| "I'll dispatch 5+ agents to go faster"                          | More agents = more overhead. Batch in rounds of 3-4.                                                 |
+| "I'll create a team for this task"                              | Use subagent. Teams are only for [collaborative] tasks.                                              |
+| "The agent said it passed, no need to validate"                 | Agents hallucinate completion. Always validate independently via the validator agent.                |
+| "Validation is overhead, tests already passed"                  | Tests verify behavior. Validation verifies the agent did not lie about running tests. Both required. |
+| "I will review the code myself instead of spawning a validator" | You are CTO. Delegate validation. You never review code directly.                                    |
+| "This task is too small to need a receipt"                      | Every task needs a receipt. Receipts are how the system tracks what actually happened.               |
 
 ## Plan Enforcement
 
@@ -67,7 +71,18 @@ bd update {task-id} --status in-progress
 bd show {task-id} --json
 ```
 
-The `description` field contains the complete agent prompt written by `/dp-cto:work-plan`. For the first round, pass it verbatim to the `Agent` tool with `run_in_background: true`. For subsequent rounds, apply the file-change injection from Step 2.5 before dispatching — if upstream tasks modified files in this task's scope, prepend the `## Upstream Changes` section; otherwise pass verbatim.
+The agent prompt is the issue description from `bd show`. Append the Completion Receipt Requirement section (defined below) to every agent prompt before dispatching. For subsequent rounds, also apply the file-change injection from Step 2.5 — if upstream tasks modified files in this task's scope, prepend the `## Upstream Changes` section.
+
+Each dispatched agent prompt MUST include explicit scope boundaries. The agent must know:
+
+- Which files it owns (can modify)
+- Which files it must not touch
+- What commands it must run to verify
+- What to do when stuck (escalate, not guess)
+
+These boundaries are already defined in the `## Files` and `## Constraints` sections written by `/dp-cto:work-plan`. Verify they are present before dispatching. If missing, extract from the task spec and append.
+
+Dispatch via the `Agent` tool with `run_in_background: true`.
 
 3. **Track the dispatch** — record when the agent is spawned:
 
@@ -91,7 +106,30 @@ ROUND_BASELINE=$(git rev-parse HEAD)
 
 6. Batch in rounds of 3-4 (preserve anti-pattern rule).
 
-The agent prompt is pre-built in the beads issue description. Do NOT modify it except for the `## Upstream Changes` injection described in Step 2.5 — when upstream file overlap is detected, prepend that section; otherwise pass verbatim.
+The agent prompt is pre-built in the beads issue description. Do NOT modify it except for: (a) appending the Completion Receipt Requirement, (b) prepending the `## Upstream Changes` injection when file overlap is detected (Step 2.5), and (c) verifying scope boundaries are present.
+
+### Completion Receipt Requirement
+
+Append this section to every dispatched agent prompt, after the `## Constraints` section:
+
+```
+## Completion Receipt Requirement
+
+When you finish your work, you MUST include this section at the END of your output:
+
+## Completion Receipt
+
+- **Task**: [your task ID]: [your task title]
+- **Status**: PASS | FAIL
+- **Files Modified**: [comma-separated list]
+- **Verification Command**: [exact command you ran]
+- **Verification Output**: [first 500 chars]
+- **Exit Code**: [0 or actual code]
+- **Acceptance Criteria Met**: YES | NO | PARTIAL
+- **Unresolved Issues**: [list or "None"]
+
+This receipt is validated by the completion-gate hook. Missing or incomplete receipts trigger warnings.
+```
 
 CTO is auto-notified when background agents complete. After each agent completes, **track the outcome**, **update the label**, and mark it done:
 
@@ -103,7 +141,7 @@ bd label remove {task-id} "agent:dispatched" && bd label add {task-id} "agent:do
 bd close {task-id}
 ```
 
-**Collect modified files** — extract the "Files Modified" list from the agent's result text. Store a map for this round: `{task-id} -> [file1, file2, ...]`. If the agent result does not include a clear file list, run `git diff --name-only $ROUND_BASELINE` scoped to the task's declared file scope to infer what changed. Accumulate across rounds (append, do not overwrite).
+**Collect modified files** — extract the "Files Modified" list from the agent's Completion Receipt. Store a map for this round: `{task-id} -> [file1, file2, ...]`. If the agent result does not include a clear file list, run `git diff --name-only $ROUND_BASELINE` scoped to the task's declared file scope to infer what changed. Accumulate across rounds (append, do not overwrite).
 
 On failure:
 
@@ -198,7 +236,7 @@ Skip this step if no `[iterative]` tasks exist. Most well-planned tasks should b
 For each `[iterative]` task:
 
 1. Mark in progress: `bd update {task-id} --status in-progress`
-2. Extract the agent prompt from `bd show {task-id} --json` (the `description` field). Apply file-change injection from Step 2.5 if upstream overlap exists; otherwise pass verbatim.
+2. Extract the agent prompt from `bd show {task-id} --json` (the `description` field). Append the Completion Receipt Requirement. Apply file-change injection from Step 2.5 if upstream overlap exists.
 3. **Track the dispatch** — record when the agent is spawned:
 
 ```bash
@@ -213,7 +251,7 @@ bd label add {task-id} "agent:dispatched"
 
 5. Dispatch as a `[subagent]` task first (same as Step 2)
 
-After completion, **track the outcome**, **collect modified files** (same as Step 2 — extract from agent result or infer via `git diff`), and **update the label**:
+After completion, **track the outcome**, **collect modified files** (same as Step 2 — extract from Completion Receipt or infer via `git diff`), and **update the label**:
 
 On success:
 
@@ -246,7 +284,7 @@ Skip this entire step if there are no `[collaborative]` tasks in the plan.
 2. For each collaborative task: `TaskCreate` with description, file scope, acceptance criteria
 3. Set `addBlockedBy` for sequential dependencies
 4. Spawn teammates via `Agent` tool with `team_name` parameter
-5. Extract the agent prompt from `bd show {task-id} --json` (the `description` field) for each teammate. Apply file-change injection from Step 2.5 if upstream overlap exists; otherwise pass verbatim.
+5. Extract the agent prompt from `bd show {task-id} --json` (the `description` field) for each teammate. Append the Completion Receipt Requirement. Apply file-change injection from Step 2.5 if upstream overlap exists.
 6. **Track the dispatch and label** — for each teammate dispatched:
 
 ```bash
@@ -257,7 +295,7 @@ bd label add {task-id} "agent:dispatched"
 7. Monitor via `TaskList`, steer via `SendMessage`
 8. Ask teammates to cross-review each other's work
 9. When all collaborative tasks complete: shut down teammates via `SendMessage({ type: "shutdown_request" })`, then `TeamDelete()`
-10. **Update labels, collect modified files, and mark done** — for each completed collaborative task, collect modified files (same as Step 2 — extract from agent result or infer via `git diff`):
+10. **Update labels, collect modified files, and mark done** — for each completed collaborative task, collect modified files (same as Step 2 — extract from Completion Receipt or infer via `git diff`):
 
 On success:
 
@@ -278,41 +316,92 @@ Always remove the previous label before adding the new one to prevent label stac
 
 After all collaborative tasks complete, proceed to Step 2.5 (Round Checkpoint) before continuing to Step 5.
 
-## Step 5: Two-Stage Review
+## Step 5: Builder/Validator Review
 
-For each completed task (from any dispatch type), run a two-stage review:
+For each completed task (from any dispatch type), run a two-stage builder/validator review. The builder (implementation agent) has already finished. Now validate independently.
 
-**Stage 1 — Spec compliance** via `dp-cto:quality-code-review`:
+### Stage 1 — Validator Agent (read-only)
 
-- Does the implementation match the task spec?
-- Are all acceptance criteria met?
-- Are files within declared scope?
+Spawn a SEPARATE validation agent in the foreground. This agent has explicit read-only constraints.
 
-**Stage 2 — Code quality**:
+**Track the validation dispatch**:
+
+```bash
+bd comments add {task-id} "dispatch: role=validator type=subagent started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+```
+
+**Validator agent prompt** — pass exactly this structure:
+
+```
+You are a VALIDATOR. You may ONLY use Read, Glob, Grep, and Bash (read-only commands only). You MUST NOT use Edit, Write, or any file-modifying tool.
+
+## Your Task
+
+Independently verify the builder's Completion Receipt for Task {task-id}: {task-title}.
+
+## Builder's Completion Receipt
+
+{paste the Completion Receipt from the builder agent's output}
+
+## Original Task Spec
+
+{paste the acceptance criteria from bd show {task-id} --json}
+
+## File Scope
+
+{list the files from the task's ## Files section}
+
+## Instructions
+
+1. Run the verification command from the receipt. Compare the output to what the receipt claims.
+2. Check that every file listed in "Files Modified" exists and was actually changed.
+3. Verify each acceptance criterion independently — do not trust the builder's claim.
+4. Check that no files outside the declared scope were modified.
+
+## Output
+
+You MUST output exactly one of:
+- "CONFIRMED: Receipt verified. [evidence summary]"
+- "DISPUTED: [specific discrepancy]. Expected X, got Y."
+```
+
+**Track the validation outcome**:
+
+```bash
+bd comments add {task-id} "outcome: result={confirmed|disputed} role=validator"
+```
+
+### Stage 2 — Code Quality Review (only if Stage 1 is CONFIRMED)
+
+If the validator outputs **CONFIRMED**, proceed to code quality review via `dp-cto:quality-code-review`:
 
 - Test coverage: are edge cases tested?
 - Error handling: are failure modes addressed?
 - Patterns: does the code match existing codebase conventions?
 
-### Review by dispatch type
-
-**Subagent tasks**: CTO reads the returned result. **Track the review dispatch**:
+**Track the review dispatch**:
 
 ```bash
 bd comments add {task-id} "dispatch: role=reviewer type=subagent started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
-Spawn a foreground review Agent with the result + file diffs. After the review completes, **track the review outcome**:
+Spawn a foreground review Agent with the builder's result + file diffs. After the review completes, **track the review outcome**:
 
 ```bash
-bd comments add {task-id} "outcome: result={pass|fail} issues_found={N}"
+bd comments add {task-id} "outcome: result={pass|fail} issues_found={N} role=reviewer"
 ```
 
-If issues found, spawn a fresh fix Agent (foreground) with the review feedback + original task spec + file scope. Re-review after fix. Max 2 fix rounds, then report the failure to the user and suggest they invoke `/dp-cto:work-run-loop` manually.
+If issues found, spawn a fresh fix Agent (foreground) with the review feedback + original task spec + file scope. The fix agent must also produce a Completion Receipt. Re-validate (Stage 1) after fix. Max 2 fix rounds, then report the failure to the user and suggest they invoke `/dp-cto:work-run-loop` manually.
 
-**Iterative tasks**: Dispatched as subagents (Step 3). Same review process as subagent tasks above.
+If the validator outputs **DISPUTED**, skip code quality review. Spawn a fresh fix agent (foreground) with the discrepancy details + original task spec + file scope. The fix agent must produce a Completion Receipt. Re-validate (Stage 1) after fix. Max 2 fix rounds.
 
-**Collaborative tasks**: Cross-review already happened in Step 4. CTO does a final spec-compliance check by spawning a review Agent.
+### Review by dispatch type
+
+**Subagent tasks**: Full builder/validator review (Stage 1 + Stage 2) as described above.
+
+**Iterative tasks**: Dispatched as subagents (Step 3). Same builder/validator review as subagent tasks.
+
+**Collaborative tasks**: Cross-review already happened in Step 4. CTO runs Stage 1 (validator) as a final spec-compliance check.
 
 NEVER proceed with open review issues.
 
@@ -338,7 +427,7 @@ NEVER proceed with open review issues.
 6. NEVER answer an agent's question by coding the solution — send guidance only
 7. NEVER skip TDD in agent constraints
 8. NEVER create a team for subagent or iterative tasks — teams are only for [collaborative] tasks
-9. NEVER skip the two-stage review for any task, regardless of size
+9. NEVER skip the builder/validator review for any task, regardless of size
 10. NEVER merge without passing integration tests
 
 ## Red Flags — STOP

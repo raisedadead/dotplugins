@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, writeFile, readFile, rm, mkdtemp, readdir } from "node:fs/promises";
+import { mkdir, writeFile, rm, mkdtemp, readdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -87,84 +87,11 @@ export async function removeTmpDir(dir: string): Promise<void> {
   await rm(dir, { recursive: true, force: true });
 }
 
-export async function seedStage(
-  tmpDir: string,
-  sessionId: string,
-  stage: string,
-  planPath = "",
-): Promise<void> {
-  const dir = join(tmpDir, ".claude", "dp-cto");
-  await mkdir(dir, { recursive: true });
-  const data = {
-    stage,
-    plan_path: planPath,
-    started_at: "2026-01-01T00:00:00Z",
-    history: [stage],
-  };
-  await writeFile(join(dir, `${sessionId}.stage.json`), JSON.stringify(data));
-}
-
-export async function getStage(tmpDir: string, sessionId: string): Promise<string> {
-  try {
-    const raw = await readFile(
-      join(tmpDir, ".claude", "dp-cto", `${sessionId}.stage.json`),
-      "utf-8",
-    );
-    const data = JSON.parse(raw);
-    return data.stage ?? "idle";
-  } catch {
-    return "idle";
-  }
-}
-
 export async function listStageDir(tmpDir: string): Promise<string[]> {
   try {
     return await readdir(join(tmpDir, ".claude", "dp-cto"));
   } catch {
     return [];
-  }
-}
-
-export async function seedBreadcrumb(
-  tmpDir: string,
-  sessionId: string,
-  stage: string,
-  planPath = "",
-): Promise<void> {
-  const dir = join(tmpDir, ".claude", "dp-cto");
-  await mkdir(dir, { recursive: true });
-  const data = { session_id: sessionId, stage, plan_path: planPath, cwd: tmpDir };
-  await writeFile(join(dir, "active.json"), JSON.stringify(data));
-}
-
-// ─── Cache-based state helpers (v4.0 lib-state.sh) ──────────────────────────
-
-export async function seedCache(tmpDir: string, stage: string, activeEpic = ""): Promise<void> {
-  const dir = join(tmpDir, ".claude", "dp-cto");
-  await mkdir(dir, { recursive: true });
-  const data = {
-    active_epic: activeEpic,
-    stage,
-    sprint: "",
-    suspended: [],
-    synced_at: "2026-01-01T00:00:00Z",
-  };
-  await writeFile(join(dir, "cache.json"), JSON.stringify(data));
-}
-
-export async function seedCorruptCache(tmpDir: string): Promise<void> {
-  const dir = join(tmpDir, ".claude", "dp-cto");
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, "cache.json"), "NOT VALID JSON{{{");
-}
-
-export async function getCacheStage(tmpDir: string): Promise<string> {
-  try {
-    const raw = await readFile(join(tmpDir, ".claude", "dp-cto", "cache.json"), "utf-8");
-    const data = JSON.parse(raw);
-    return data.stage ?? "idle";
-  } catch {
-    return "idle";
   }
 }
 
@@ -195,22 +122,93 @@ export async function createMockBd(tmpDir: string, overrides?: { list?: string }
   return `${binDir}:${process.env.PATH}`;
 }
 
+export async function createMockBdForStage(
+  tmpDir: string,
+  stage: string,
+  epicId = "epic-1",
+): Promise<string> {
+  const binDir = join(tmpDir, ".mock-bin");
+  await mkdir(binDir, { recursive: true });
+  const queryResponse =
+    stage === "idle" ? "[]" : JSON.stringify([{ id: epicId, labels: [`dp-cto:${stage}`] }]);
+  const script = [
+    "#!/bin/bash",
+    'case "$1" in',
+    `  query) cat <<'QUERYEOF'`,
+    queryResponse,
+    "QUERYEOF",
+    ";;",
+    "  set-state) exit 0 ;;",
+    '  show) echo "{}" ;;',
+    '  list) echo "[]" ;;',
+    '  prime) echo "" ;;',
+    "  *) exit 1 ;;",
+    "esac",
+  ].join("\n");
+  const bdPath = join(binDir, "bd");
+  await writeFile(bdPath, script, { mode: 0o755 });
+  return `${binDir}:${process.env.PATH}`;
+}
+
+export async function createMockBdWithLog(
+  tmpDir: string,
+  stage: string,
+  epicId = "epic-1",
+): Promise<{ path: string; logFile: string }> {
+  const binDir = join(tmpDir, ".mock-bin");
+  await mkdir(binDir, { recursive: true });
+  const logFile = join(tmpDir, "bd-calls.log");
+  const queryResponse =
+    stage === "idle" ? "[]" : JSON.stringify([{ id: epicId, labels: [`dp-cto:${stage}`] }]);
+  const script = [
+    "#!/bin/bash",
+    `echo "$@" >> "${logFile}"`,
+    'case "$1" in',
+    `  query) cat <<'QUERYEOF'`,
+    queryResponse,
+    "QUERYEOF",
+    ";;",
+    "  set-state) exit 0 ;;",
+    '  show) echo "{}" ;;',
+    '  list) echo "[]" ;;',
+    '  prime) echo "" ;;',
+    "  *) exit 1 ;;",
+    "esac",
+  ].join("\n");
+  const bdPath = join(binDir, "bd");
+  await writeFile(bdPath, script, { mode: 0o755 });
+  return { path: `${binDir}:${process.env.PATH}`, logFile };
+}
+
 export async function createMockBdWithResponses(
   tmpDir: string,
-  responses: { query?: string; list?: string; prime?: string },
+  responses: {
+    query?: string;
+    queryExecutingPolishing?: string;
+    list?: string;
+    prime?: string;
+  },
 ): Promise<string> {
   const binDir = join(tmpDir, ".mock-bin");
   await mkdir(binDir, { recursive: true });
   const queryResp = responses.query ?? "[]";
+  const queryExecPolishResp = responses.queryExecutingPolishing ?? queryResp;
   const listResp = responses.list ?? "[]";
   const primeResp = responses.prime ?? "";
   const script = [
     "#!/bin/bash",
     'case "$1" in',
-    `  query) cat <<'QUERYEOF'`,
+    "  query)",
+    '    if echo "$2" | grep -q "executing"; then',
+    `      cat <<'EXECQUERYEOF'`,
+    queryExecPolishResp,
+    "EXECQUERYEOF",
+    "    else",
+    `      cat <<'QUERYEOF'`,
     queryResp,
     "QUERYEOF",
-    ";;",
+    "    fi",
+    "    ;;",
     `  prime) cat <<'PRIMEEOF'`,
     primeResp,
     "PRIMEEOF",

@@ -29,7 +29,6 @@ const VALID_EVENTS = [
   "ConfigChange",
   "WorktreeCreate",
   "WorktreeRemove",
-  "PreCompact",
   "SessionEnd",
 ];
 

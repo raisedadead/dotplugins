@@ -28,44 +28,42 @@ if [ -z "$SESSION_ID" ]; then
 fi
 
 export CWD="${CWD_INPUT:-$(pwd)}"
-# shellcheck source=lib-state.sh
-source "$(dirname "$0")/lib-state.sh"
+
+# Get active dp-cto epic directly from beads
+get_dp_cto_epic() {
+  if ! command -v bd &>/dev/null; then
+    return 1
+  fi
+  local result
+  result=$(bd query "label=dp-cto:planning OR label=dp-cto:planned OR label=dp-cto:executing OR label=dp-cto:polishing OR label=dp-cto:suspended" --json 2>/dev/null) || return 1
+  if [ -z "$result" ] || [ "$result" = "[]" ]; then
+    return 1
+  fi
+  echo "$result" | jq -r '.[0].id // empty' 2>/dev/null || return 1
+}
 
 SKILL="${SKILL_NAME#dp-cto:}"
+ACTIVE_EPIC=$(get_dp_cto_epic) || ACTIVE_EPIC=""
 
 case "$SKILL" in
   work-plan)
-    # Read active epic — work-plan skill should have set it during execution
-    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
-      write_state "$ACTIVE_EPIC" "planned" 2>/dev/null || true
-    else
-      CACHE=$(read_cache)
-      write_cache "$(echo "$CACHE" | jq -c '.stage = "planned"')" 2>/dev/null || true
+      bd set-state "$ACTIVE_EPIC" "dp-cto=planned" 2>/dev/null || true
     fi
     ;;
   work-run)
-    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
-      write_state "$ACTIVE_EPIC" "polishing" 2>/dev/null || true
-    else
-      CACHE=$(read_cache)
-      write_cache "$(echo "$CACHE" | jq -c '.stage = "polishing"')" 2>/dev/null || true
+      bd set-state "$ACTIVE_EPIC" "dp-cto=polishing" 2>/dev/null || true
     fi
     ;;
   work-polish)
-    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
-      write_state "$ACTIVE_EPIC" "complete" 2>/dev/null || true
-    else
-      CACHE=$(read_cache)
-      write_cache "$(echo "$CACHE" | jq -c '.stage = "complete"')" 2>/dev/null || true
+      bd set-state "$ACTIVE_EPIC" "dp-cto=complete" 2>/dev/null || true
     fi
     ;;
   work-park)
-    ACTIVE_EPIC=$(read_cache | jq -r '.active_epic // ""' 2>/dev/null)
     if [ -n "$ACTIVE_EPIC" ]; then
-      suspend_state "$ACTIVE_EPIC" 2>/dev/null || true
+      bd set-state "$ACTIVE_EPIC" "dp-cto=suspended" 2>/dev/null || true
     fi
     ;;
   work-unpark)

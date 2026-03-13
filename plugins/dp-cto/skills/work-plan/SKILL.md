@@ -13,15 +13,19 @@ If you catch yourself writing application code, STOP. You are planning, not codi
 
 ## Anti-Rationalization
 
-| Thought                                        | Reality                                                               |
-| ---------------------------------------------- | --------------------------------------------------------------------- |
-| "I'll skip brainstorming, the user knows what" | Always explore alternatives. Even clear ideas benefit from options.   |
-| "I'll write code to prototype this"            | You are planning, not coding. Describe, don't implement.              |
-| "The user's first idea is fine"                | Propose 2-3 approaches. The first idea is rarely the best.            |
-| "I'll put the plan in a markdown file"         | Plans are beads molecules (`bd create`). Never markdown files.        |
-| "I'll ask 10 clarifying questions"             | Batch to 2-3 questions with opinionated defaults. Respect their time. |
-| "This is too small to need a plan"             | If it has 2+ tasks, it needs a plan. Write one.                       |
-| "I'll just start execute myself"               | Handoff only. The user decides when to execute.                       |
+| Thought                                                   | Reality                                                                                              |
+| --------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| "I'll skip brainstorming, the user knows what they want"  | Always explore alternatives. Even clear ideas benefit from options.                                  |
+| "I'll write code to prototype this"                       | You are planning, not coding. Describe, don't implement.                                             |
+| "The user's first idea is fine"                           | Propose 2-3 approaches. The first idea is rarely the best.                                           |
+| "I'll put the plan in a markdown file"                    | Plans are beads molecules (`bd create`). Never markdown files.                                       |
+| "I'll ask 10 clarifying questions"                        | Batch to 2-3 questions with opinionated defaults. Respect their time.                                |
+| "This is too small to need a plan"                        | If it has 2+ tasks, it needs a plan. Write one.                                                      |
+| "I'll just start execute myself"                          | Handoff only. The user decides when to execute.                                                      |
+| "This plan needs 15 tasks because the feature is complex" | Complex features need multiple epics, not giant plans. Split at natural boundaries.                  |
+| "The agent will figure out the details"                   | No agent should guess. Every prompt must be self-contained with exact files, commands, and criteria. |
+| "I can leave the test command vague"                      | Vague test commands produce vague results. Specify the exact command and expected output pattern.    |
+| "Context is obvious from the codebase"                    | Agents start fresh with no memory. State every assumption explicitly in the prompt.                  |
 
 ## Step 0: Gather Brief
 
@@ -80,6 +84,20 @@ Present the chosen design as a single cohesive summary covering:
 3. **Testing strategy** — what to test, edge cases, how to verify
 
 Do a **YAGNI check**: list anything in the design that could be deferred to a later iteration. If deferrable items exist, use `AskUserQuestion` (multiSelect) to ask: "Which items should we defer to a later iteration?" Remove deferred items from scope.
+
+## Step 4.5: Constitutional Complexity Check
+
+Before creating beads tasks, validate the plan against advisory limits. These are guardrails, not hard blocks.
+
+**Task Count**: If the plan has more than 8 tasks, warn:
+"Advisory: This plan has {N} tasks. Plans with 8+ tasks are harder for agents to execute cleanly. Consider splitting into multiple epics with clear boundaries."
+Use AskUserQuestion: "This plan has {N} tasks. Options: Proceed as-is / Split into smaller epics (I will help re-scope)."
+
+**Dependency Depth**: If any task has more than 2 transitive blockers (A blocks B blocks C blocks D), warn:
+"Advisory: Task {name} has a deep dependency chain ({depth} levels). Flatter graphs execute faster."
+Use AskUserQuestion: "Deep dependency chain detected. Options: Proceed as-is / Flatten dependencies (I will suggest parallel alternatives)."
+
+**These are advisory only.** If the user chooses to proceed, respect their decision and move to Step 5.
 
 ## Step 5: Create Beads Molecule
 
@@ -177,16 +195,42 @@ You are implementing Task N: [Component Name].
 
 [2-3 sentences of architectural context from the analysis — how this task fits into the whole]
 
+## When Stuck
+
+If you encounter an unexpected error or blocker:
+1. Read the error message completely — do not skip stack traces
+2. Check if the issue is in YOUR file scope. If not, report it and stop.
+3. Use dp-cto:quality-deep-debug to investigate systematically
+4. If stuck after 2 attempts at the same issue, report what you tried and what failed. Do NOT keep trying the same approach.
+5. Never silently ignore failures. Report the actual state.
+
 ## Constraints
 
 CONSTRAINTS:
-- REQUIRED SUB-SKILL: dp-cto:quality-red-green-refactor — write a failing test first, verify it fails, implement, verify it passes
-- REQUIRED SUB-SKILL: dp-cto:quality-check-done — run verification commands and confirm output before claiming done
-- If you encounter a bug during implementation, use dp-cto:quality-deep-debug to diagnose before fixing
-- If you receive review feedback, use dp-cto:quality-code-review to process it with technical rigor
-- Verify before claiming done: run the test command, read the full output, show evidence
+- REQUIRED SUB-SKILL: dp-cto:quality-red-green-refactor — write a failing test first, verify it fails, implement, verify it passes. No exceptions.
+- REQUIRED SUB-SKILL: dp-cto:quality-check-done — run verification commands and confirm output before claiming done. No "should work" allowed.
+- If you encounter a bug during implementation, use dp-cto:quality-deep-debug to diagnose before fixing. Do NOT guess at fixes.
+- If you receive review feedback, use dp-cto:quality-code-review to process it with technical rigor. No performative thanks.
+- OUTPUT REQUIRED: You MUST end your work with a ## Completion Receipt section (see format below)
+- Verify before claiming done: run the test command, read the FULL output, show evidence
 - Do NOT modify files outside your scope: [actual file paths from task spec]
 - Do NOT run git write commands (commit, push, checkout, branch)
+- Do NOT silently skip failures. Report actual state.
+
+## Completion Receipt Format
+
+End your response with this exact section:
+
+## Completion Receipt
+
+- **Task**: [task-id]: [task-title]
+- **Status**: PASS | FAIL
+- **Files Modified**: [comma-separated list of files you changed]
+- **Verification Command**: [exact command you ran to verify]
+- **Verification Output**: [first 500 chars of the command output]
+- **Exit Code**: [0 or the actual exit code]
+- **Acceptance Criteria Met**: YES | NO | PARTIAL
+- **Unresolved Issues**: [list any remaining issues, or "None"]
 ```
 
 For `[subagent:isolated]` tasks, add this additional line to the Constraints section:

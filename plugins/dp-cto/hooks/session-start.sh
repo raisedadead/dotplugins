@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# SessionStart hook: injects dp-cto enforcement context, syncs state from beads,
-# runs bd prime for context injection, and detects recoverable prior sessions.
+# SessionStart hook: injects dp-cto enforcement context,
+# detects recoverable prior sessions via beads, and detects orphaned tasks.
 
 if ! command -v jq &>/dev/null; then
   cat << 'EOF'
@@ -39,33 +39,9 @@ fi
 
 # ─── State initialization ───────────────────────────────────────────────────
 RECOVERY_CONTEXT=""
-BEADS_CONTEXT=""
-
-# Source lib-stage.sh for backward compat (dual-write of legacy stage file) and recovery fallback (breadcrumb + stage file scan)
-# shellcheck source=lib-stage.sh
-source "$(dirname "$0")/lib-stage.sh"
 
 if [ "$DEGRADED" = "false" ]; then
-  # Source lib-state.sh for beads-backed state management
-  # shellcheck source=lib-state.sh
-  source "$(dirname "$0")/lib-state.sh"
-
-  # Sync state from beads into local cache
-  sync_from_beads
-
-  # Write legacy stage file for backward compat with other hooks
-  if [ -n "$SESSION_ID" ]; then
-    write_stage "$SESSION_ID" "idle" ""
-  fi
-
   # ─── Session Recovery Detection (beads-backed) ─────────────────────────────
-  is_non_terminal() {
-    case "$1" in
-      planning|planned|executing|polishing) return 0 ;;
-      *) return 1 ;;
-    esac
-  }
-
   recover_from_beads() {
     local results
     results=$(cd "$CWD" && bd query "label=dp-cto:planning OR label=dp-cto:executing OR label=dp-cto:polishing" --json 2>/dev/null) || return 1
@@ -89,107 +65,30 @@ if [ "$DEGRADED" = "false" ]; then
 
     epic_id=$(printf '%s' "$epic_id" | tr -cd 'a-zA-Z0-9._-')
 
-    if ! is_non_terminal "$epic_stage"; then
-      return 1
-    fi
+    case "$epic_stage" in
+      planning|planned|executing|polishing) ;;
+      *) return 1 ;;
+    esac
 
     RECOVERY_CONTEXT="RECOVERY: Active epic (${epic_id}) is at stage '${epic_stage}'. Resume with /dp-cto:work-run or /dp-cto:work-polish as appropriate."
     return 0
   }
 
-  recover_from_breadcrumb() {
-    local bc
-    bc=$(read_breadcrumb)
-    if [ -z "$bc" ]; then
-      return 1
-    fi
-
-    local bc_stage _bc_plan_path bc_session_id
-    read -r bc_stage _bc_plan_path bc_session_id < <(
-      echo "$bc" | jq -r '[.stage // "", .plan_path // "", .session_id // ""] | @tsv'
-    ) || return 1
-
-    bc_stage=$(printf '%s' "$bc_stage" | tr -cd 'a-zA-Z0-9._-')
-    bc_session_id=$(printf '%s' "$bc_session_id" | tr -cd 'a-zA-Z0-9._-')
-
-    if ! is_non_terminal "$bc_stage"; then
-      return 1
-    fi
-
-    local sf
-    sf=$(stage_file "$bc_session_id")
-    if [ ! -f "$sf" ]; then
-      return 1
-    fi
-
-    RECOVERY_CONTEXT="RECOVERY (legacy breadcrumb): Prior session (${bc_session_id}) was at stage '${bc_stage}'. Resume with /dp-cto:work-run or /dp-cto:work-polish as appropriate."
-    return 0
-  }
-
-  recover_from_scan() {
-    local dir
-    dir=$(stage_dir)
-    if [ ! -d "$dir" ]; then
-      return 1
-    fi
-
-    local found="" latest_ts="" latest_stage="" latest_sid=""
-
-    for f in "$dir"/*.stage.json; do
-      [ -f "$f" ] || continue
-
-      local fname
-      fname=$(basename "$f" .stage.json)
-
-      if [ "$fname" = "$SESSION_ID" ]; then
-        continue
-      fi
-
-      local s ts _pp
-      read -r s ts _pp < <(jq -r '[.stage // "", .started_at // "", .plan_path // ""] | @tsv' "$f" 2>/dev/null) || continue
-
-      if ! is_non_terminal "$s"; then
-        continue
-      fi
-
-      # shellcheck disable=SC2072
-      if [ -z "$latest_ts" ] || [[ "$ts" > "$latest_ts" ]]; then
-        found="true"
-        latest_ts="$ts"
-        latest_stage="$s"
-        latest_sid="$fname"
-      fi
-    done
-
-    if [ -z "$found" ]; then
-      return 1
-    fi
-
-    RECOVERY_CONTEXT="RECOVERY (legacy stage scan): Prior session (${latest_sid}) was at stage '${latest_stage}'. Resume with /dp-cto:work-run or /dp-cto:work-polish as appropriate."
-    return 0
-  }
-
   if [ -n "$SESSION_ID" ]; then
-    recover_from_beads || recover_from_breadcrumb || recover_from_scan || true
+    recover_from_beads || true
   fi
 
   # ─── Orphan in-progress task detection ───────────────────────────────────
   detect_orphaned_tasks() {
-    local cache
-    cache=$(read_cache)
-
-    local epic_id stage
-    epic_id=$(echo "$cache" | jq -r '.active_epic // ""' 2>/dev/null) || return 1
-    stage=$(echo "$cache" | jq -r '.stage // ""' 2>/dev/null) || return 1
+    local epic_json
+    epic_json=$(cd "$CWD" && bd query "label=dp-cto:executing OR label=dp-cto:polishing" --json 2>/dev/null) || return 1
+    if [ -z "$epic_json" ] || [ "$epic_json" = "[]" ]; then return 1; fi
+    local epic_id
+    epic_id=$(echo "$epic_json" | jq -r '.[0].id // empty' 2>/dev/null) || return 1
 
     if [ -z "$epic_id" ]; then
       return 1
     fi
-
-    case "$stage" in
-      executing|polishing) ;;
-      *) return 1 ;;
-    esac
 
     local tasks
     tasks=$(cd "$CWD" && bd list --parent "$epic_id" --status in-progress --json 2>/dev/null) || return 1
@@ -226,24 +125,6 @@ ${orphan_msg}"
   }
 
   detect_orphaned_tasks || true
-
-  # ─── Beads prime context ───────────────────────────────────────────────────
-  BD_OUTPUT=""
-  set +e
-  BD_OUTPUT=$(cd "$CWD" && bd prime 2>/dev/null)
-  BD_EXIT=$?
-  set -e
-  if [ $BD_EXIT -eq 0 ] && [ -n "$BD_OUTPUT" ]; then
-    BD_OUTPUT=$(printf '%s' "$BD_OUTPUT" | sed -E 's/<\/?[A-Za-z_][A-Za-z0-9_]*>//g')
-    BD_OUTPUT="${BD_OUTPUT:0:4096}"
-    BEADS_CONTEXT="$BD_OUTPUT"
-  fi
-
-else
-  # Degraded mode (bd unavailable): write legacy stage file as recovery breadcrumb for future sessions
-  if [ -n "$SESSION_ID" ]; then
-    write_stage "$SESSION_ID" "idle" ""
-  fi
 fi
 
 # ─── Build output ────────────────────────────────────────────────────────────
@@ -284,11 +165,6 @@ if [ -n "$RECOVERY_CONTEXT" ]; then
 ${ENFORCEMENT_TEXT}"
 else
   ADDITIONAL_CONTEXT="$ENFORCEMENT_TEXT"
-fi
-
-if [ -n "$BEADS_CONTEXT" ]; then
-  ADDITIONAL_CONTEXT="${BEADS_CONTEXT}
-${ADDITIONAL_CONTEXT}"
 fi
 
 if [ -n "$DEGRADED_MSG" ]; then
