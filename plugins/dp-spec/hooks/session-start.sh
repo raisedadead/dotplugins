@@ -121,7 +121,7 @@ ENFORCEMENT_TEXT="<EXTREMELY_IMPORTANT>
 DP-SPEC PLUGIN ENFORCEMENT
 
 dp-spec skills must ALWAYS be invoked exactly as requested:
-- /dp-spec:plan — discover constraints and brainstorm approaches. Shortcut that runs discover + brainstorm.
+- /dp-spec:plan — full pipeline orchestrator. Chains all phases: discover -> brainstorm -> research -> draft -> challenge -> handoff. Stage-transparent (sub-skills handle their own stage tracking).
 - /dp-spec:discover — discover constraints, requirements, and boundaries.
 - /dp-spec:brainstorm — brainstorm approaches and trade-offs.
 - /dp-spec:research — deep research and validation. Standalone mode (--standalone) bypasses stage enforcement.
@@ -134,10 +134,11 @@ dp-spec quality skills (side-effect-free, allowed from any stage): dp-spec:resea
 These are DISTINCT skills. Never substitute one dp-spec skill for another.
 
 Workflow: /dp-spec:discover -> /dp-spec:brainstorm -> /dp-spec:research -> /dp-spec:draft -> /dp-spec:challenge -> /dp-spec:handoff.
-Shortcut: /dp-spec:plan (runs discover + brainstorm).
+Orchestrator: /dp-spec:plan (chains all phases; plan itself writes no stages — sub-skills do).
 
 Stage enforcement is active. The hook tracks your workflow stage and only allows valid transitions:
-idle -> discovering (discover/plan running) -> discovered (discover/plan done) -> brainstorming (brainstorm running) -> brainstormed (brainstorm done) -> researching (research running) -> researched (research done) -> drafting (draft running) -> drafted (draft done) -> challenging (challenge running) -> challenged (challenge done) -> complete (handoff done) -> plan (new cycle)
+idle -> discovering (discover running) -> discovered (discover done) -> brainstorming (brainstorm running) -> brainstormed (brainstorm done) -> researching (research running) -> researched (research done) -> drafting (draft running) -> drafted (draft done) -> challenging (challenge running) -> challenged (challenge done) -> complete (handoff done) -> discover or plan (new cycle)
+Both plan and discover are allowed from idle and complete. Only discover (and other sub-skills) write stage transitions.
 Out-of-order skill invocations will be denied by the PreToolUse hook.
 </EXTREMELY_IMPORTANT>"
 

@@ -1,6 +1,6 @@
 # Task Breakdown Template
 
-Use this format when decomposing the approved RFC/PRD into implementation tasks for the terminal handoff. Tasks should be sized for a single developer or Claude Code agent session (2-5 hours of work each). Dispatch type tags enable dp-cto:execute compatibility.
+Use this format when decomposing the approved RFC/PRD into implementation tasks for the terminal handoff. Tasks should be sized as 5-15 minute Claude Code agent work units. Dispatch type tags enable dp-cto:execute compatibility.
 
 ---
 
@@ -86,9 +86,9 @@ Use this format when decomposing the approved RFC/PRD into implementation tasks 
 
 ## Sizing Guide
 
-- **S (Small):** Single file change, straightforward implementation, <2 hours
-- **M (Medium):** Multiple files, some design decisions, 2-4 hours
-- **L (Large):** Cross-cutting change, new subsystem, needs sub-tasks, 4-8 hours. Consider breaking L tasks into M tasks.
+- **S (Small):** Single file, straightforward change
+- **M (Medium):** Multiple files, some coordination needed
+- **L (Large):** Cross-cutting, consider splitting further into M tasks
 
 ## Dispatch Type Tags
 

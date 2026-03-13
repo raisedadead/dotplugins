@@ -241,10 +241,10 @@ The dp-spec plugin enforces a linear 12-state workflow via stage tracking in `.c
 
 ```
 idle ──→ discovering ──→ discovered ──→ brainstorming ──→ brainstormed ──→ researching ──→ researched ──→ drafting ──→ drafted ──→ challenging ──→ challenged ──→ complete
- ↑        (discover/      (discover/     (brainstorm      (brainstorm      (research       (research      (draft        (draft       (challenge      (challenge      │
- │         plan running)    plan done)     running)         done)            running)        done)          running)      done)        running)        done)           │
+ ↑        (discover        (discover      (brainstorm      (brainstorm      (research       (research      (draft        (draft       (challenge      (challenge      │
+ │         running)          done)          running)         done)            running)        done)          running)      done)        running)        done)           │
  └──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
-                                                                        new cycle (plan)
+                                                              new cycle via discover (or plan, which invokes discover)
 ```
 
 **Transient states** (`discovering`, `brainstorming`, `researching`, `drafting`, `challenging`): Set by PreToolUse when a skill starts. If interrupted, recovery detects these as non-terminal.
@@ -263,7 +263,7 @@ dp-spec ships 6 skills plus one shortcut:
 - **`dp-spec:draft`** — Tiered document authoring. User selects ADR (single decision), RFC (full technical design, 14 sections), or PRD (product requirements with user stories). Reads the appropriate reference template, writes section by section with user review at each major group, runs a mandatory devil's advocate pre-check before final approval. Saves as `{TYPE}-<title>.md`.
 - **`dp-spec:challenge`** — Adversarial review. Spawns 5 parallel devil agents (Scale, Security, Ops, Simplicity, Dependency) that stress-test the drafted document through their specific lens. Findings are severity-graded (`[CRITICAL]`, `[WARNING]`, `[SUGGESTION]`), deduplicated, and triaged with the user (revise/accept-risk/defer). Runs a mandatory pre-mortem exercise after resolution.
 - **`dp-spec:handoff`** — Spec-to-tasks decomposition. Extracts protection boundaries from the spec, decomposes into 5-15 minute agent work units with dispatch tags (`[subagent]`, `[subagent:isolated]`, `[iterative]`, `[collaborative]`), acceptance criteria, and scope boundaries. Generates a beads molecule (if `bd` CLI available) or a structured markdown task breakdown (fallback). Output is agent-ready for `dp-cto:execute`.
-- **`dp-spec:plan`** — Shortcut that runs discover + brainstorm as a single invocation. Treated identically to `discover` by the stage machine (enters `discovering` stage).
+- **`dp-spec:plan`** — Full pipeline orchestrator that chains all six spec phases in order (discover -> brainstorm -> research -> draft -> challenge -> handoff). Invokes each sub-skill via the Skill tool with context passing between phases. Stage-transparent — `plan` itself does not write transient or resting stages; the sub-skills it invokes handle their own stage tracking.
 
 ### Key design: dp-spec reference templates
 
@@ -348,7 +348,7 @@ Follows Anthropic's official marketplace conventions:
 ### dp-spec
 
 - Stage files are preserved on SessionEnd (not deleted) — `.claude/dp-spec/active.json` is the recovery breadcrumb
-- `dp-spec:plan` is a shortcut (discover + brainstorm) — the `skills/plan/` directory exists but has no SKILL.md; the hook system handles routing by treating `plan` identically to `discover`
+- `dp-spec:plan` is a SKILL-backed orchestrator (`skills/plan/SKILL.md`) that chains the full spec pipeline (discover -> brainstorm -> research -> draft -> challenge -> handoff). The stage machine treats `plan` transparently — it does not write transient or resting stages; the sub-skills it invokes handle their own stage tracking.
 - `dp-spec:research` has two modes: pipeline mode (stage-enforced, after brainstorm) and standalone mode (`--standalone` flag, bypasses stage enforcement from any stage)
 - dp-spec PostToolUse hook fires on ALL MCP tools (`mcp__.*`) — same pattern as dp-cto
 - `/dp-spec:challenge` spawns 5 parallel devil agents — requires Agent tool availability; each devil reviews ONLY through its designated lens

@@ -72,17 +72,17 @@ Break the approved spec into implementation tasks. Each task must be:
 
 For each task, define:
 
-| Field                   | Required | Description                                                             |
-| ----------------------- | -------- | ----------------------------------------------------------------------- |
-| **Title**               | Yes      | `Task N: [Component Name] [dispatch-tag] [complexity]`                  |
-| **Description**         | Yes      | What needs to be done — specific enough to implement without follow-ups |
-| **RFC/PRD Section**     | Yes      | Which section of the spec this implements                               |
-| **Files**               | Yes      | Exact paths — Create / Modify / Test                                    |
-| **Acceptance Criteria** | Yes      | Testable conditions with specific commands                              |
-| **Dependencies**        | Yes      | Which tasks must complete before this one                               |
-| **Complexity**          | Yes      | S (single file, <2h) / M (multi-file, 2-4h) / L (cross-cutting, 4-8h)   |
-| **Dispatch Type**       | Yes      | `[subagent]`, `[subagent:isolated]`, `[iterative]`, `[collaborative]`   |
-| **Scope Boundaries**    | Yes      | Files/interfaces the agent must NOT modify (from Protection Boundaries) |
+| Field                   | Required | Description                                                                                                  |
+| ----------------------- | -------- | ------------------------------------------------------------------------------------------------------------ |
+| **Title**               | Yes      | `Task N: [Component Name] [dispatch-tag] [complexity]`                                                       |
+| **Description**         | Yes      | What needs to be done — specific enough to implement without follow-ups                                      |
+| **RFC/PRD Section**     | Yes      | Which section of the spec this implements                                                                    |
+| **Files**               | Yes      | Exact paths — Create / Modify / Test                                                                         |
+| **Acceptance Criteria** | Yes      | Testable conditions with specific commands                                                                   |
+| **Dependencies**        | Yes      | Which tasks must complete before this one                                                                    |
+| **Complexity**          | Yes      | S (single file, straightforward) / M (multi-file, some coordination) / L (cross-cutting, consider splitting) |
+| **Dispatch Type**       | Yes      | `[subagent]`, `[subagent:isolated]`, `[iterative]`, `[collaborative]`                                        |
+| **Scope Boundaries**    | Yes      | Files/interfaces the agent must NOT modify (from Protection Boundaries)                                      |
 
 ### Dispatch Selection Heuristic
 
