@@ -90,7 +90,7 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 - `stage-transition.sh` — fires on `Skill`, tracks dp-cto stage transitions (including `work-park` -> `suspend_state` and `work-unpark` -> skill-managed restoration)
 - `completion-gate.sh` — fires on `Agent`, detects completion claims without test evidence, injects advisory warning (defense-in-depth for `dp-cto:quality-check-done`)
 
-**SessionStart** (`session-start.sh`) — injects enforcement context, syncs state from beads via `sync_from_beads()`, runs `bd prime` for beads context injection, detects recoverable prior sessions.
+**SessionStart** (`session-start.sh`) — injects enforcement context, syncs state from beads via `sync_from_beads()`, runs `bd prime` for beads context injection (with broadened tag sanitization — strips all XML-like tags from `bd prime` output), detects recoverable prior sessions, and scans for orphaned in-progress tasks when resuming an `executing` or `polishing` epic.
 
 **SessionEnd** (`session-cleanup.sh`) — no-op in v4.0. State lives on beads epics, synced in real-time.
 
@@ -100,6 +100,10 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 - **Beads scheduling**: `bd ready --json` replaces manual plan parsing. CTO dispatches whatever is ready, marks done with `bd close {task-id}`, then re-queries `bd ready` to discover newly unblocked tasks.
 - **Agent prompt extraction**: What were previously fenced `agent-prompt` blocks in markdown are now stored as beads issue descriptions (written by `/dp-cto:work-plan`). Work-run extracts them via `bd show {task-id} --json` and passes them verbatim to Agent calls — work-run is a near-mechanical dispatcher.
+- **Agent identity labels**: On dispatch: `bd label add {task-id} "agent:dispatched"`. On completion: swap to `agent:done`. On failure: swap to `agent:failed`. Labels use remove-before-add to prevent stacking. Supplements (not replaces) the existing `bd comments add` dispatch/outcome protocol.
+- **Round checkpoints**: After each dispatch round completes, CTO queries `bd list --parent {epic-id} --json` and emits a progress summary: `{done}/{total} tasks done, {running} running, {ready} ready. {failed} failed.`
+- **Circuit breaker**: If >50% of agents in a dispatch round fail, CTO pauses with `AskUserQuestion` offering three options: continue, re-dispatch failed tasks, or stop execution.
+- **File-change injection**: Between rounds, CTO collects modified files from completed agents, matches them against downstream task scopes, and prepends `## Upstream Changes` context to downstream prompts when overlap exists. Uses a round-baseline SHA (`git rev-parse HEAD` before each round) for reliable diff references.
 - **Phase 1 — Subagent dispatch**: `[subagent]` tasks spawn via `Agent(run_in_background=true)` for parallel execution. `[subagent:isolated]` adds `isolation: "worktree"` for filesystem isolation.
 - **Phase 2 — Iterative dispatch**: `[iterative]` tasks invoke `/dp-cto:work-run-loop` (sequential foreground subagent loop). No team collision since work-run-loop is subagent-based.
 - **Phase 3 — Collaborative dispatch**: `[collaborative]` tasks (rare) use `TeamCreate` + teammates + `SendMessage` for inter-agent coordination. Only phase that creates a team.
@@ -112,10 +116,13 @@ The dp-cto plugin uses a multi-hook architecture across all four lifecycle event
 
 - Each iteration spawns a fresh `general-purpose` subagent via the Agent tool (no teams, no context rot)
 - Session-scoped state files in `.claude/ralph/{SESSION_ID}.md` (no cross-terminal interference)
-- Quality gates run configurable commands between iterations
+- Quality gates run configurable commands between iterations, wrapped with `timeout 300` (exit code 124 = gate timeout, treated as failure)
 - Progress tracking via structured iteration log in the state file
 - Smart defaults: infers prompt from session/plan context, detects project toolchain for gates
 - No confirmation pause — proceeds automatically with resolved config
+- **Crash detection** (Step 0d): scans `.claude/ralph/` for orphaned state files with `status: running` from prior sessions. Uses `AskUserQuestion` to offer resume or abandon. Abandoned files get `status: abandoned` (not deleted).
+- **State file validation** (Step 2a): validates YAML frontmatter integrity before each iteration. On corruption, warns and re-creates from the `# Task` section or original prompt.
+- **Quality gate timeout** (Step 2d): wraps gate commands with `timeout 300`. Exit code 124 handled explicitly. Consecutive gate failures tracked — warns user after 3.
 
 **CTO integration** (three points):
 
@@ -147,12 +154,13 @@ The dp-cto plugin includes a PostToolUse hook (`research-validator.sh`) that fir
 
 ### Key design: agent protocol
 
-dp-cto uses `bd comments add` to track structured dispatch and outcome data on beads issues:
+dp-cto uses `bd comments add` and `bd label add` to track structured dispatch and outcome data on beads issues:
 
-- **Task-level**: dispatch comments record which agent was assigned and the prompt used; outcome comments record pass/fail, test evidence, and any fix attempts.
-- **Epic-level**: review comments record review agent findings; fix comments record fix agent results per round.
+- **Task-level labels**: `agent:dispatched` (running), `agent:done` (completed), `agent:failed` (failed). Labels use remove-before-add to prevent stacking. Queryable via `bd query "label=agent:*"`.
+- **Task-level comments**: dispatch comments record which agent was assigned and the prompt used; outcome comments record pass/fail, test evidence, and any fix attempts.
+- **Epic-level comments**: review comments record review agent findings; fix comments record fix agent results per round.
 
-This provides a persistent audit trail per-epic that survives session boundaries and enables `/dp-cto:ops-show-board` to display progress without re-parsing agent output.
+This provides a persistent audit trail per-epic that survives session boundaries and enables `/dp-cto:ops-show-board` to display progress via label-based queries (not comment parsing).
 
 ### Key design: sprint framework
 
@@ -203,6 +211,7 @@ Recovery is primarily via beads query (`bd query "label=dp-cto:*"`) and `sync_fr
 - SessionStart calls `sync_from_beads()` which queries beads for epics with `dp-cto:*` labels and populates `cache.json`
 - Epics in non-terminal stages (`planning`, `planned`, `executing`, `polishing`) are detected as recoverable
 - Suspended epics (label `dp-cto:suspended`) are tracked in the `cache.json` `suspended[]` array
+- **Orphan detection**: when resuming an `executing` or `polishing` epic, scans for in-progress tasks via `bd list --parent {epic-id} --status in-progress --json`. Injects actionable context (task IDs, titles, max 5 with overflow count) pointing to `/dp-cto:ops-show-board` and `/dp-cto:work-run`
 - Breadcrumb file at `.claude/dp-cto/active.json` still exists as a fast-path fallback, with legacy `*.stage.json` scan as final fallback
 - `cache.json` is the primary local state file, synced from beads on each session start
 

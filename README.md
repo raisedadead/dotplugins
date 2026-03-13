@@ -60,9 +60,13 @@ Requires: `jq` on PATH. Optional: `bd` CLI (beads) for structured task schedulin
 Hooks enforce discipline automatically — you never invoke them:
 
 - **Stage machine** prevents running work-run before work-plan, or work-polish before work-run
+- **Agent identity labels** track dispatched/done/failed state on each task, queryable via `bd query`
+- **Round checkpoints + circuit breaker** — progress summaries after each dispatch round; pauses if >50% of agents fail
+- **File-change injection** — downstream agents get context about what upstream agents changed in shared files
 - **Completion gate** warns when agents claim "tests pass" without showing test output
 - **Research validator** injects verification checklists after web searches and MCP calls
-- **Session recovery** detects interrupted workflows and offers to resume next session
+- **Session recovery** detects interrupted workflows, scans for orphaned in-progress tasks, and offers to resume next session
+- **Ralph hardening** — crash detection for orphaned loop states, YAML validation with auto-recovery, 5-minute quality gate timeout
 
 ### Mental Model
 
@@ -182,7 +186,7 @@ Work-run-loop spawns a new `general-purpose` agent per iteration instead of cont
 | Orchestrate, don't implement  | CTO mental model — delegate everything, review everything, write nothing                            |
 | Adaptive dispatch             | Not all tasks are alike — subagents for parallel, iterative for stubborn, collaborative for coupled |
 
-dp-cto v3.0 evolved from prompt-based skill enforcement to hook-based mechanical enforcement — native quality skills, beads-based scheduling, and harness engineering hooks.
+dp-cto v4.1 adds execute monitoring (agent labels, round checkpoints, circuit breaker), file-change injection for downstream tasks, session-start orphan detection, and ralph hardening (crash detection, YAML validation, gate timeout) on top of v4.0's beads-based scheduling, hook-based mechanical enforcement, and native quality skills.
 
 ---
 
@@ -198,25 +202,32 @@ dotplugins/
 │       │   └── plugin.json       # Plugin metadata + version
 │       ├── hooks/
 │       │   ├── hooks.json        # Hook definitions
-│       │   ├── session-start.sh  # Injects enforcement context + beads prime
+│       │   ├── session-start.sh  # Injects enforcement context + beads prime + orphan detection
 │       │   ├── session-cleanup.sh
 │       │   ├── intercept-orchestration.sh  # PreToolUse: stage enforcement + skill filtering
+│       │   ├── intercept-bd-init.sh        # PreToolUse: denies bd init without --stealth
 │       │   ├── stage-transition.sh         # PostToolUse: stage machine advances
 │       │   ├── completion-gate.sh          # PostToolUse: completion claim verification
+│       │   ├── research-validator.sh       # PostToolUse: verification checklists
 │       │   ├── lib-stage.sh               # Shared stage read/write helpers
-│       │   └── research-validator.sh      # PostToolUse: verification checklists
+│       │   └── lib-state.sh               # Shared beads-backed state management
 │       └── skills/
 │           ├── work-plan/SKILL.md
-│           ├── work-run/SKILL.md
-│           ├── work-run-loop/SKILL.md
+│           ├── work-run/SKILL.md           # Adaptive dispatch + agent labels + circuit breaker
+│           ├── work-run-loop/SKILL.md      # Iterative loops + crash detection + gate timeout
 │           ├── work-stop-loop/SKILL.md
+│           ├── work-park/SKILL.md
+│           ├── work-unpark/SKILL.md
 │           ├── work-polish/SKILL.md
 │           ├── quality-fact-check/SKILL.md
 │           ├── quality-red-green-refactor/SKILL.md
 │           ├── quality-deep-debug/SKILL.md
 │           ├── quality-check-done/SKILL.md
 │           ├── quality-code-review/SKILL.md
-│           └── quality-sweep-code/SKILL.md
+│           ├── quality-sweep-code/SKILL.md
+│           ├── ops-show-board/SKILL.md     # Dashboard with agent label queries
+│           ├── ops-track-sprint/SKILL.md
+│           └── ops-clean-slate/SKILL.md
 ├── tests/                        # Vitest hook contract + schema tests
 ├── scripts/
 │   ├── validate.sh               # Full plugin validation suite
