@@ -52,7 +52,9 @@ Six available lenses. The user selects which to run.
 
 ### 0a: Present Lens Selection
 
-Use `AskUserQuestion` with `multiSelect: true`:
+**If the skill was invoked with `--all`** (e.g., `/dp-cto:work-polish --all`): skip the interactive prompt entirely. Select all 6 lenses (Core 4 + Extended 2) and proceed directly to 0b.
+
+**Otherwise**, use `AskUserQuestion` with `multiSelect: true`:
 
 - Question: "Which review lenses should the polish phase run?"
 - Options (pre-select the Core 4):
