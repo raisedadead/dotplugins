@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# SessionStart hook: injects dp-cto enforcement context, syncs state from beads,
+# runs bd prime for context injection, and detects recoverable prior sessions.
 
 if ! command -v jq &>/dev/null; then
   cat << 'EOF'
@@ -27,7 +29,9 @@ DEGRADED_MSG=""
 
 if ! command -v bd &>/dev/null; then
   DEGRADED=true
-  DEGRADED_MSG="dp-cto: bd CLI not found. Install: brew install beads. Orchestration skills (work-plan, work-run, work-polish, ops-track-sprint, work-park, work-unpark) disabled. Quality skills (quality-red-green-refactor, quality-deep-debug, quality-check-done, quality-code-review, quality-sweep-code, ops-show-board, ops-clean-slate) available."
+  DEGRADED_MSG="dp-cto: bd CLI not found. Install: brew install beads. \
+Orchestration skills (work-plan, work-run, work-polish, ops-track-sprint, work-park, work-unpark) disabled. \
+Quality skills (quality-red-green-refactor, quality-deep-debug, quality-check-done, quality-code-review, quality-sweep-code, ops-show-board, ops-clean-slate) available."
 elif [ ! -d "${CWD}/.beads" ]; then
   DEGRADED=true
   DEGRADED_MSG="dp-cto: No beads database found. Initialize: bd init --stealth"
@@ -129,7 +133,7 @@ if [ "$DEGRADED" = "false" ]; then
       return 1
     fi
 
-    local latest_file="" latest_ts="" latest_stage="" latest_sid=""
+    local found="" latest_ts="" latest_stage="" latest_sid=""
 
     for f in "$dir"/*.stage.json; do
       [ -f "$f" ] || continue
@@ -150,14 +154,14 @@ if [ "$DEGRADED" = "false" ]; then
 
       # shellcheck disable=SC2072
       if [ -z "$latest_ts" ] || [[ "$ts" > "$latest_ts" ]]; then
-        latest_file="$f"
+        found="true"
         latest_ts="$ts"
         latest_stage="$s"
         latest_sid="$fname"
       fi
     done
 
-    if [ -z "$latest_file" ]; then
+    if [ -z "$found" ]; then
       return 1
     fi
 
@@ -169,6 +173,60 @@ if [ "$DEGRADED" = "false" ]; then
     recover_from_beads || recover_from_breadcrumb || recover_from_scan || true
   fi
 
+  # ─── Orphan in-progress task detection ───────────────────────────────────
+  detect_orphaned_tasks() {
+    local cache
+    cache=$(read_cache)
+
+    local epic_id stage
+    epic_id=$(echo "$cache" | jq -r '.active_epic // ""' 2>/dev/null) || return 1
+    stage=$(echo "$cache" | jq -r '.stage // ""' 2>/dev/null) || return 1
+
+    if [ -z "$epic_id" ]; then
+      return 1
+    fi
+
+    case "$stage" in
+      executing|polishing) ;;
+      *) return 1 ;;
+    esac
+
+    local tasks
+    tasks=$(cd "$CWD" && bd list --parent "$epic_id" --status in-progress --json 2>/dev/null) || return 1
+
+    if [ -z "$tasks" ] || [ "$tasks" = "null" ] || [ "$tasks" = "[]" ]; then
+      return 1
+    fi
+
+    local count
+    count=$(echo "$tasks" | jq 'length' 2>/dev/null) || return 1
+
+    if [ "$count" -eq 0 ]; then
+      return 1
+    fi
+
+    local task_lines
+    task_lines=$(echo "$tasks" | jq -r '
+      .[0:5] | .[] | "\(.id): \(.title)"
+    ' 2>/dev/null) || return 1
+
+    local overflow=""
+    if [ "$count" -gt 5 ]; then
+      overflow=" and $(( count - 5 )) more"
+    fi
+
+    local orphan_msg="RECOVERY: Epic ${epic_id} has ${count} orphaned in-progress tasks: ${task_lines}${overflow} — Run /dp-cto:ops-show-board to review, then /dp-cto:work-run to re-dispatch or bd close {id} to skip."
+
+    if [ -n "$RECOVERY_CONTEXT" ]; then
+      RECOVERY_CONTEXT="${RECOVERY_CONTEXT}
+${orphan_msg}"
+    else
+      RECOVERY_CONTEXT="$orphan_msg"
+    fi
+  }
+
+  detect_orphaned_tasks || true
+
   # ─── Beads prime context ───────────────────────────────────────────────────
   BD_OUTPUT=""
   set +e
@@ -176,7 +234,7 @@ if [ "$DEGRADED" = "false" ]; then
   BD_EXIT=$?
   set -e
   if [ $BD_EXIT -eq 0 ] && [ -n "$BD_OUTPUT" ]; then
-    BD_OUTPUT=$(printf '%s' "$BD_OUTPUT" | sed -E 's/<\/?[Ee][Xx][Tt][Rr][Ee][Mm][Ee][Ll][Yy]_[Ii][Mm][Pp][Oo][Rr][Tt][Aa][Nn][Tt]>//g')
+    BD_OUTPUT=$(printf '%s' "$BD_OUTPUT" | sed -E 's/<\/?[A-Za-z_][A-Za-z0-9_]*>//g')
     BD_OUTPUT="${BD_OUTPUT:0:4096}"
     BEADS_CONTEXT="$BD_OUTPUT"
   fi

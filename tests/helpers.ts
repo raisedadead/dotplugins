@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { mkdir, writeFile, readFile, rm, mkdtemp } from "node:fs/promises";
+import { mkdir, writeFile, readFile, rm, mkdtemp, readdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -118,7 +118,6 @@ export async function getStage(tmpDir: string, sessionId: string): Promise<strin
 }
 
 export async function listStageDir(tmpDir: string): Promise<string[]> {
-  const { readdir } = await import("node:fs/promises");
   try {
     return await readdir(join(tmpDir, ".claude", "dp-cto"));
   } catch {
@@ -173,17 +172,58 @@ export async function seedBeadsDir(tmpDir: string): Promise<void> {
   await mkdir(join(tmpDir, ".beads"), { recursive: true });
 }
 
-export async function createMockBd(tmpDir: string): Promise<string> {
+export async function createMockBd(tmpDir: string, overrides?: { list?: string }): Promise<string> {
   const binDir = join(tmpDir, ".mock-bin");
   await mkdir(binDir, { recursive: true });
-  const script = `#!/bin/bash
-case "$1" in
-  query) echo "[]" ;;
-  prime) echo "" ;;
-  set-state) exit 0 ;;
-  show) echo "{}" ;;
-  *) exit 1 ;;
-esac`;
+  const listResponse = overrides?.list ?? "[]";
+  const script = [
+    "#!/bin/bash",
+    'case "$1" in',
+    '  query) echo "[]" ;;',
+    '  prime) echo "" ;;',
+    "  set-state) exit 0 ;;",
+    '  show) echo "{}" ;;',
+    "  list) cat <<'LISTEOF'",
+    listResponse,
+    "LISTEOF",
+    ";;",
+    "  *) exit 1 ;;",
+    "esac",
+  ].join("\n");
+  const bdPath = join(binDir, "bd");
+  await writeFile(bdPath, script, { mode: 0o755 });
+  return `${binDir}:${process.env.PATH}`;
+}
+
+export async function createMockBdWithResponses(
+  tmpDir: string,
+  responses: { query?: string; list?: string; prime?: string },
+): Promise<string> {
+  const binDir = join(tmpDir, ".mock-bin");
+  await mkdir(binDir, { recursive: true });
+  const queryResp = responses.query ?? "[]";
+  const listResp = responses.list ?? "[]";
+  const primeResp = responses.prime ?? "";
+  const script = [
+    "#!/bin/bash",
+    'case "$1" in',
+    `  query) cat <<'QUERYEOF'`,
+    queryResp,
+    "QUERYEOF",
+    ";;",
+    `  prime) cat <<'PRIMEEOF'`,
+    primeResp,
+    "PRIMEEOF",
+    ";;",
+    "  set-state) exit 0 ;;",
+    '  show) echo "{}" ;;',
+    `  list) cat <<'LISTEOF'`,
+    listResp,
+    "LISTEOF",
+    ";;",
+    "  *) exit 1 ;;",
+    "esac",
+  ].join("\n");
   const bdPath = join(binDir, "bd");
   await writeFile(bdPath, script, { mode: 0o755 });
   return `${binDir}:${process.env.PATH}`;

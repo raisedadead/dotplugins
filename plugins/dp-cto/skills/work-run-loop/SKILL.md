@@ -88,6 +88,22 @@ Derive a session ID: current timestamp in format `YYYYMMDD-HHMMSS`.
 
 State file path: `.claude/ralph/{SESSION_ID}.md`
 
+### 0d: Crash Detection — Scan for Orphaned State Files
+
+Before initializing a new state file, scan `.claude/ralph/` for existing files with `status: running` in their YAML frontmatter.
+
+1. Run via Bash: `ls .claude/ralph/*.md 2>/dev/null` to list existing state files.
+2. For each file found, read its frontmatter and check if `status: running`.
+3. For each file where `status: running`, extract its `session_id` and compare to the current session ID (derived in 0c).
+   - If the `session_id` matches the current session — this is the current session's file, skip it (should not happen on fresh init, but guard against it).
+   - If the `session_id` does NOT match — this is an orphan from a dead session.
+4. If one or more orphans are found, present each to the user via AskUserQuestion:
+   - Question: `"Found running ralph state from a prior session: {file}. Options: Resume it / Abandon and start fresh."`
+   - Options: `["Resume", "Abandon"]`
+5. If the user chooses **Resume**: Read that orphan state file, adopt its `session_id` and state file path, and continue from its last recorded iteration (skip Step 1, jump to Step 2 with `current_iteration` set to the value in the orphan's frontmatter).
+6. If the user chooses **Abandon**: Update the orphan file's frontmatter `status` from `running` to `abandoned` using the Edit tool. Do NOT delete the file. Proceed to Step 1 to initialize a fresh state file with the new session ID.
+7. If no orphans are found, proceed to Step 1 normally.
+
 ## Step 1: Initialize State
 
 1. Create the sessions directory via Bash: `mkdir -p .claude/ralph`
@@ -122,7 +138,12 @@ Repeat the following until a stop condition is met.
 
 ### 2a: Pre-Iteration Checks
 
-Read the state file. Check:
+**State file validation**: Before reading YAML frontmatter, validate the state file:
+
+1. Check that the state file exists at the expected path (`.claude/ralph/{SESSION_ID}.md`). If missing, warn: `"Ralph state file corrupted or missing. Re-creating from task context."` and re-create the file from Step 1 using the original prompt (the `# Task` section content). Then continue.
+2. Read the file and validate that the YAML frontmatter (between the opening `---` and closing `---`) parses correctly — all required fields (`session_id`, `status`, `current_iteration`, `max_iterations`) must be present and non-null. If frontmatter is unparseable or missing required fields, warn: `"Ralph state file corrupted or missing. Re-creating from task context."` Attempt to recover the `# Task` section from the damaged file (everything after the frontmatter's closing `---` that follows `# Task`). Re-create the file from Step 1 using the recovered prompt (or the original prompt if recovery fails). Then continue.
+
+**Status checks**: After successful validation, read the state file and check:
 
 - If `status` is `cancelled` — STOP immediately (someone ran `/dp-cto:work-stop-loop`). Jump to Step 3 with reason "cancelled".
 - Increment `current_iteration` by 1. Update the state file frontmatter with the new count.
@@ -204,12 +225,13 @@ Extract the completion report from the agent's returned output:
 
 If `--quality-gate CMD` was specified:
 
-Run the command via Bash tool. Capture exit code and output (first 500 chars).
+Run the command via Bash tool wrapped in a 5-minute timeout: `timeout 300 {CMD}`. Capture exit code and output (first 500 chars).
 
 - Exit 0 = gate PASSED
-- Non-zero = gate FAILED
+- Exit 124 = gate TIMED OUT — treat as gate FAILED. Log: `"Quality gate timed out after 5 minutes."` Continue to next iteration.
+- Any other non-zero exit = gate FAILED
 
-Track consecutive gate failures. If gate has failed 3 consecutive iterations, warn the user:
+Track consecutive gate failures (including timeouts). If gate has failed 3 consecutive iterations, warn the user:
 "Quality gate has failed 3 consecutive iterations. Consider adjusting the prompt or gate command. Continuing loop."
 
 ### 2e: Detect Completion
@@ -292,6 +314,6 @@ Leave the state file in place — it is a permanent record of the run. Do NOT de
 | About to write application code        | STOP. That is the agent's job.                    |
 | Promise not in output but want to stop | Keep looping or exhaust iterations.               |
 | Quality gate failing every iteration   | Warn user after 3 consecutive failures. Continue. |
-| State file missing or corrupted        | STOP. Re-create from Step 1.                      |
+| State file missing or corrupted        | Warn, re-create from Step 1 (see Step 2a).        |
 | Agent never responded                  | Log it and spawn a fresh iteration.               |
 | State file shows `status: cancelled`   | STOP immediately. Jump to Step 3.                 |

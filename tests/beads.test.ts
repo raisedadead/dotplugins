@@ -1,7 +1,11 @@
-import { describe, test, expect, beforeEach, afterEach } from "vitest";
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { describe, test, expect, beforeAll, beforeEach, afterEach } from "vitest";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { createTmpDir, removeTmpDir, runHook, runShell, createNoBdPath } from "./helpers";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WORK_RUN_SKILL = join(__dirname, "..", "plugins", "dp-cto", "skills", "work-run", "SKILL.md");
 
 // ─── Beads Availability Detection ───────────────────────────────────────────
 
@@ -50,12 +54,18 @@ describe("Beads availability detection (session-start.sh)", () => {
   });
 
   test("bd CLI available but no .beads directory: no beads context prepended", async () => {
-    const fakeBd = join(tmpDir, "fake-bd");
+    const binDir = join(tmpDir, ".mock-bin");
+    await mkdir(binDir, { recursive: true });
+    const fakeBd = join(binDir, "bd");
     await writeFile(fakeBd, '#!/usr/bin/env bash\necho "bd mock"', { mode: 0o755 });
-    const r = await runHook("session-start.sh", {
-      session_id: "test-session",
-      cwd: tmpDir,
-    });
+    const r = await runHook(
+      "session-start.sh",
+      {
+        session_id: "test-session",
+        cwd: tmpDir,
+      },
+      { PATH: `${binDir}:${process.env.PATH}` },
+    );
     expect(r.exitCode).toBe(0);
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
@@ -180,5 +190,70 @@ describe("bd ready JSON output parsing", () => {
     const r = await runShell(`echo '${output}' | jq '.tasks[0].blockers | length'`);
     expect(r.exitCode).toBe(0);
     expect(r.stdout).toBe("2");
+  });
+});
+
+// ─── work-run SKILL.md Monitoring Contract ──────────────────────────────────
+
+describe("work-run SKILL.md execute monitoring contract", () => {
+  let content: string;
+
+  beforeAll(async () => {
+    content = await readFile(WORK_RUN_SKILL, "utf-8");
+  });
+
+  describe("agent identity labels", () => {
+    test("documents bd label add for agent:dispatched on dispatch", () => {
+      expect(content).toMatch(/bd label add \{task-id\} "agent:dispatched"/);
+    });
+
+    test("documents bd label remove agent:dispatched before agent:done", () => {
+      expect(content).toMatch(/bd label remove \{task-id\} "agent:dispatched"/);
+    });
+
+    test("documents bd label add for agent:done on success", () => {
+      expect(content).toMatch(/bd label add \{task-id\} "agent:done"/);
+    });
+
+    test("documents bd label add for agent:failed on failure", () => {
+      expect(content).toMatch(/bd label add \{task-id\} "agent:failed"/);
+    });
+
+    test("existing dispatch comment protocol (bd comments add) remains", () => {
+      expect(content).toMatch(/bd comments add \{task-id\} "dispatch:/);
+      expect(content).toMatch(/bd comments add \{task-id\} "outcome:/);
+    });
+  });
+
+  describe("round checkpoints", () => {
+    test("documents round checkpoint step (Step 2.5)", () => {
+      expect(content).toMatch(/## Step 2\.5: Round Checkpoint/);
+    });
+
+    test("documents progress summary format", () => {
+      expect(content).toMatch(
+        /\{done\}\/\{total\} tasks done, \{running\} running, \{ready\} ready\. \{failed\} failed\./,
+      );
+    });
+
+    test("documents bd list --parent query for progress", () => {
+      expect(content).toMatch(/bd list --parent \{epic-id\} --json/);
+    });
+  });
+
+  describe("circuit breaker", () => {
+    test("documents >50% failure threshold", () => {
+      expect(content).toMatch(/50%/);
+    });
+
+    test("documents AskUserQuestion for circuit breaker", () => {
+      expect(content).toMatch(/AskUserQuestion/);
+    });
+
+    test("documents three circuit breaker options", () => {
+      expect(content).toMatch(/Continue to next round/i);
+      expect(content).toMatch(/Re-dispatch failed tasks/i);
+      expect(content).toMatch(/Stop execution/i);
+    });
   });
 });
