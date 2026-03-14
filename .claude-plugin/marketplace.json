@@ -5,7 +5,7 @@
     "email": "m@raisedadead.com"
   },
   "metadata": {
-    "version": "3.5.1",
+    "version": "3.6.0",
     "description": "Personal Claude Code plugin marketplace by Mrugesh — orchestration, iterative loops, beads integration, and development workflow tools.",
     "pluginRoot": "./plugins"
   },
@@ -13,7 +13,7 @@
     {
       "name": "dp-cto",
       "source": "./plugins/dp-cto",
-      "version": "3.5.1",
+      "version": "3.6.0",
       "description": "CTO orchestration layer — /dp-cto:work-plan for brainstorming and planning, /dp-cto:work-run for adaptive dispatch with beads-aware harness hooks, /dp-cto:work-run-loop for iterative loops, /dp-cto:work-polish for multi-perspective review, /dp-cto:quality-fact-check for research validation.",
       "category": "productivity",
       "tags": [
