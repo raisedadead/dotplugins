@@ -26,6 +26,7 @@ If you catch yourself writing application code, STOP. You are planning, not codi
 | "The agent will figure out the details"                   | No agent should guess. Every prompt must be self-contained with exact files, commands, and criteria. |
 | "I can leave the test command vague"                      | Vague test commands produce vague results. Specify the exact command and expected output pattern.    |
 | "Context is obvious from the codebase"                    | Agents start fresh with no memory. State every assumption explicitly in the prompt.                  |
+| "I'll just quickly re-plan this one task"                 | Re-plan is disruptive. Always show the full warning. The user decides, not you.                      |
 
 ## Step 0: Gather Brief
 
@@ -34,6 +35,63 @@ Ask the user for their goals in 1-3 sentences. Keep it simple:
 **"What are we building? Give me a quick brief."**
 
 If the user already provided context before invoking this skill (in the same message or earlier in conversation), use that as the brief. Do not re-ask what they already told you.
+
+## Step 0.5: Detect Re-Plan Context
+
+Before proceeding to Step 1, check whether this is a re-plan of an existing epic.
+
+### Re-Plan Detection Logic
+
+1. Query for an active epic: `bd query "label=dp-cto:planning" --json`
+2. If an active epic is found with child tasks — this is a **RE-PLAN**. Proceed to the Consequences Warning below.
+3. If no active epic is found — this is a fresh plan. Skip the rest of Step 0.5 and continue to Step 1 as normal.
+
+### Consequences Warning (MANDATORY)
+
+Before any re-plan operations, present this warning to the user via `AskUserQuestion`:
+
+**"RE-PLAN WARNING: You are about to modify an in-flight plan. This is a disruptive operation.**
+
+**What can go wrong:**
+
+- **Removing tasks** that other pending tasks depend on will break the dependency chain
+- **Adding tasks** mid-execution increases scope and cost — agents already dispatched cannot see new context
+- **Modifying descriptions** of tasks that were written to interlock with other tasks may create inconsistencies
+- **Agents currently running** will NOT see any re-plan changes — they work from the prompt they were dispatched with
+- **Completed work** may be invalidated if you change assumptions it was built on
+
+**This is YOUR call. Re-plan proceeds at your discretion. The system will not prevent you from creating an inconsistent plan."**
+
+Options:
+
+- "Proceed with re-plan (I accept the consequences)"
+- "Abort — return to executing"
+
+If the user aborts, set state back to executing via `bd set-state {epic-id} "dp-cto=executing"` and STOP.
+
+### Re-Plan Operations (after user accepts warning)
+
+Show current epic status via `bd list --parent {epic-id} --format table`
+
+Present status summary:
+
+- Completed tasks (closed): **locked** — cannot be modified or removed
+- In-progress tasks (agents running): **locked** — visible but not modifiable
+- Pending tasks: **modifiable** — can be edited, removed, or reordered
+
+Let user choose operations via `AskUserQuestion` (multiSelect):
+
+- "Add new tasks to the plan"
+- "Remove pending tasks"
+- "Modify pending task descriptions"
+- "Adjust dependencies between pending tasks"
+
+For removing tasks: check dependency impact first. Warn if other pending tasks depend on the removed one.
+
+After modifications, transition to `planned` state and print:
+**"Re-plan complete — epic `{epic-id}` updated. Run `/dp-cto:work-run` to resume execution."**
+
+Then STOP — do not continue to Step 1.
 
 ## Step 1: Read Project Context
 
@@ -198,40 +256,13 @@ You are implementing Task N: [Component Name].
 
 ## When Stuck
 
-If you encounter an unexpected error or blocker:
-1. Read the error message completely — do not skip stack traces
-2. Check if the issue is in YOUR file scope. If not, report it and stop.
-3. Use dp-cto:quality-deep-debug to investigate systematically
-4. If stuck after 2 attempts at the same issue, report what you tried and what failed. Do NOT keep trying the same approach.
-5. Never silently ignore failures. Report the actual state.
+If you encounter an unexpected error or blocker, report what you tried and what failed. Do NOT keep trying the same approach.
 
 ## Constraints
 
-CONSTRAINTS:
-- REQUIRED SUB-SKILL: dp-cto:quality-red-green-refactor — write a failing test first, verify it fails, implement, verify it passes. No exceptions.
-- REQUIRED SUB-SKILL: dp-cto:quality-check-done — run verification commands and confirm output before claiming done. No "should work" allowed.
-- If you encounter a bug during implementation, use dp-cto:quality-deep-debug to diagnose before fixing. Do NOT guess at fixes.
-- If you receive review feedback, use dp-cto:quality-code-review to process it with technical rigor. No performative thanks.
-- OUTPUT REQUIRED: You MUST end your work with a ## Completion Receipt section (see format below)
-- Verify before claiming done: run the test command, read the FULL output, show evidence
 - Do NOT modify files outside your scope: [actual file paths from task spec]
 - Do NOT run git write commands (commit, push, checkout, branch)
-- Do NOT silently skip failures. Report actual state.
-
-## Completion Receipt Format
-
-End your response with this exact section:
-
-## Completion Receipt
-
-- **Task**: [task-id]: [task-title]
-- **Status**: PASS | FAIL
-- **Files Modified**: [comma-separated list of files you changed]
-- **Verification Command**: [exact command you ran to verify]
-- **Verification Output**: [first 500 chars of the command output]
-- **Exit Code**: [0 or the actual exit code]
-- **Acceptance Criteria Met**: YES | NO | PARTIAL
-- **Unresolved Issues**: [list any remaining issues, or "None"]
+- TDD discipline, scope enforcement, escalation protocol, and Completion Receipt format are provided by the dp-cto-implementer agent definition. Do not duplicate them here.
 ```
 
 For `[subagent:isolated]` tasks, add this additional line to the Constraints section:
@@ -280,6 +311,8 @@ The stage machine (via epic state label dp-cto=planned) will deny any skill exce
 7. NEVER skip the YAGNI check — always identify and remove deferrable items
 8. NEVER present a single approach as if there are no alternatives
 9. NEVER write task specs without acceptance criteria
+10. NEVER modify completed or in-progress tasks during re-plan — only pending tasks can be changed
+11. NEVER re-plan without showing the consequences warning — the user must explicitly accept responsibility
 
 ## Red Flags — STOP
 

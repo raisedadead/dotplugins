@@ -226,6 +226,85 @@ describe("Skill frontmatter", () => {
   });
 });
 
+// ─── Agent Frontmatter Validation ───────────────────────────────────────────
+
+const AGENTS_ROOT = join(PLUGIN_ROOT, "agents");
+
+const EXPECTED_AGENTS = ["dp-cto-implementer", "dp-cto-validator"];
+
+describe("Agent frontmatter", () => {
+  const AGENT_FIELDS: Record<string, Record<string, string>> = {
+    "dp-cto-implementer": { model: "inherit", memory: "user" },
+    "dp-cto-validator": { model: "haiku", memory: "user", permissionMode: "plan" },
+  };
+  let agentFiles: string[];
+
+  beforeAll(async () => {
+    const entries = await readdir(AGENTS_ROOT, { withFileTypes: true });
+    agentFiles = entries
+      .filter((e) => e.isFile() && e.name.endsWith(".md"))
+      .map((e) => e.name.replace(/\.md$/, ""));
+  });
+
+  test("all expected agents have files", () => {
+    for (const agent of EXPECTED_AGENTS) {
+      expect(agentFiles, `missing agent file: ${agent}.md`).toContain(agent);
+    }
+  });
+
+  test("no unexpected agent files", () => {
+    for (const file of agentFiles) {
+      expect(EXPECTED_AGENTS, `unexpected agent file: ${file}.md`).toContain(file);
+    }
+  });
+
+  test.each(EXPECTED_AGENTS)("%s.md exists with valid YAML frontmatter", async (agent) => {
+    const agentMd = join(AGENTS_ROOT, `${agent}.md`);
+    expect(existsSync(agentMd), `${agent}.md should exist`).toBe(true);
+
+    const content = await readFile(agentMd, "utf-8");
+    const lines = content.split("\n");
+    expect(lines[0]).toBe("---");
+
+    const closingIdx = lines.indexOf("---", 1);
+    expect(closingIdx, "frontmatter should have closing ---").toBeGreaterThan(0);
+
+    const frontmatter = lines.slice(1, closingIdx).join("\n");
+    const nameMatch = frontmatter.match(/^name:\s*"?([^"\n]+)"?/m);
+    expect(nameMatch, `${agent}.md should have a name field`).not.toBeNull();
+    expect(nameMatch![1].trim()).toBe(agent);
+
+    const descMatch = frontmatter.match(/^description:\s*(.+)/m);
+    expect(descMatch, `${agent}.md should have a description field`).not.toBeNull();
+    expect(
+      descMatch![1].trim().length,
+      `${agent}.md description should not be empty`,
+    ).toBeGreaterThan(0);
+  });
+
+  test.each(EXPECTED_AGENTS)("%s.md has correct security-critical fields", async (agent) => {
+    const content = await readFile(join(AGENTS_ROOT, `${agent}.md`), "utf-8");
+    const lines = content.split("\n");
+    const closingIdx = lines.indexOf("---", 1);
+    const frontmatter = lines.slice(1, closingIdx).join("\n");
+
+    const expected = AGENT_FIELDS[agent];
+    if (expected) {
+      for (const [key, value] of Object.entries(expected)) {
+        expect(frontmatter).toMatch(new RegExp(`^${key}:\\s*${value}`, "m"));
+      }
+    }
+  });
+
+  test("dp-cto-validator has no Edit or Write tools", async () => {
+    const content = await readFile(join(AGENTS_ROOT, "dp-cto-validator.md"), "utf-8");
+    const toolsLine = content.split("\n").find((l) => l.startsWith("tools:"));
+    expect(toolsLine).toBeDefined();
+    expect(toolsLine).not.toMatch(/Edit/);
+    expect(toolsLine).not.toMatch(/Write/);
+  });
+});
+
 // ─── Schema Snapshots & Drift Detection ─────────────────────────────────────
 
 describe("Schema snapshots", () => {

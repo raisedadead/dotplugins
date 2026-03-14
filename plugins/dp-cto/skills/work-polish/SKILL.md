@@ -172,10 +172,10 @@ After listing all findings, end with:
 
 1. Wait for all review agents to complete
 2. Parse each agent's output for `[CRITICAL]`, `[WARNING]`, and `[SUGGESTION]` findings
-3. **Track each lens result** — record findings per lens on the epic:
+3. **Track each lens result** — record findings per lens via audit:
 
 ```bash
-bd comments add {epic-id} "review: lens={lens} findings={N} critical={N} warning={N} suggestion={N}"
+bd audit record --type review --actor dp-cto --ref {epic-id} --data '{"lens":"{lens}","findings":{N},"critical":{N},"warning":{N},"suggestion":{N}}'
 ```
 
 Where `{lens}` is one of: `security`, `simplification`, `test-gaps`, `linting`, `performance`, `docs`.
@@ -218,10 +218,10 @@ For each finding (or group of findings in the same file), spawn a one-shot `gene
 
 Run fix agents in parallel where they touch different files. Sequential where they touch the same file.
 
-After each lens's fixes complete, **track the fix outcome** on the epic:
+After each lens's fixes complete, **track the fix outcome** via audit:
 
 ```bash
-bd comments add {epic-id} "fix: lens={lens} items_fixed={N} items_remaining={N}"
+bd audit record --type fix --actor dp-cto --ref {epic-id} --data '{"lens":"{lens}","items_fixed":{N},"items_remaining":{N}}'
 ```
 
 ### 4c: Quality Gate

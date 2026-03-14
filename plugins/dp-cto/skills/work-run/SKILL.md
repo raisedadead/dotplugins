@@ -55,6 +55,34 @@ bd list --parent {epic-id} --json
 
 Beads handles dependency resolution — `bd ready` only returns tasks whose blockers are all closed. No manual dependency tracking needed.
 
+## Step 1.5: Mirror Tasks to Native Task List
+
+Before dispatching, create native Tasks for Ctrl+T visibility:
+
+1. For each task returned by `bd ready --json`, create a native Task:
+
+   ```
+   TaskCreate(subject: "{beads-task-title}", description: "Beads: {beads-task-id}. {first-line-of-description}", activeForm: "Implementing {short-task-name}")
+   ```
+
+2. Record the mapping: `{beads-task-id} -> {native-task-id}`
+
+3. When a beads task moves to in-progress, update the native Task:
+
+   ```
+   TaskUpdate(taskId: "{native-task-id}", status: "in_progress")
+   ```
+
+4. When a beads task completes or fails, update the native Task:
+
+   ```
+   TaskUpdate(taskId: "{native-task-id}", status: "completed")
+   ```
+
+5. For subsequent rounds (after Step 2.5), create native Tasks for newly unblocked beads tasks.
+
+Native Tasks are a session-level progress mirror — beads remains the source of truth. If TaskCreate fails (e.g., non-TTY environment), skip mirroring silently and continue.
+
 ## Step 2: Subagent Dispatch (parallel)
 
 For each `[subagent]` task returned by `bd ready`:
@@ -71,7 +99,7 @@ bd update {task-id} --status in-progress
 bd show {task-id} --json
 ```
 
-The agent prompt is the issue description from `bd show`. Append the Completion Receipt Requirement section (defined below) to every agent prompt before dispatching. For subsequent rounds, also apply the file-change injection from Step 2.5 — if upstream tasks modified files in this task's scope, prepend the `## Upstream Changes` section.
+The agent prompt is the issue description from `bd show`. For subsequent rounds, also apply the file-change injection from Step 2.5 — if upstream tasks modified files in this task's scope, prepend the `## Upstream Changes` section.
 
 Each dispatched agent prompt MUST include explicit scope boundaries. The agent must know:
 
@@ -82,62 +110,53 @@ Each dispatched agent prompt MUST include explicit scope boundaries. The agent m
 
 These boundaries are already defined in the `## Files` and `## Constraints` sections written by `/dp-cto:work-plan`. Verify they are present before dispatching. If missing, extract from the task spec and append.
 
-Dispatch via the `Agent` tool with `run_in_background: true`.
+Dispatch via the `Agent` tool with `subagent_type: "dp-cto-implementer"` and `run_in_background: true`.
 
-3. **Track the dispatch** — record when the agent is spawned:
-
-```bash
-bd comments add {task-id} "dispatch: role=implementer type=subagent started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-```
-
-4. **Label the task as dispatched** — makes agent state queryable via `bd query`:
+3. **Track the dispatch** — record when the agent is spawned and register the agent state:
 
 ```bash
-bd label add {task-id} "agent:dispatched"
+bd agent state {task-id} spawning
+bd slot set {task-id} hook {task-id}
+bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+bd agent state {task-id} running
 ```
 
-For `[subagent:isolated]` tasks, use `type=subagent:isolated` and add `isolation: "worktree"` to the Agent call.
+For `[subagent:isolated]` tasks, use `dispatch_type: "subagent:isolated"` and add `isolation: "worktree"` to the Agent call.
 
-5. **Capture the round baseline** before dispatching each round — this anchors file-change detection for Step 2.5:
+4. **Capture the round baseline** before dispatching each round — this anchors file-change detection for Step 2.5:
 
 ```bash
 ROUND_BASELINE=$(git rev-parse HEAD)
 ```
 
-6. Batch in rounds of 3-4 (preserve anti-pattern rule).
+5. Batch in rounds of 3-4 (preserve anti-pattern rule).
 
-The agent prompt is pre-built in the beads issue description. Do NOT modify it except for: (a) appending the Completion Receipt Requirement, (b) prepending the `## Upstream Changes` injection when file overlap is detected (Step 2.5), and (c) verifying scope boundaries are present.
+The agent prompt is pre-built in the beads issue description. Do NOT modify it except for: (a) prepending the `## Upstream Changes` injection when file overlap is detected (Step 2.5), and (b) verifying scope boundaries are present.
 
-### Completion Receipt Requirement
+### Pre-Dispatch Validation
 
-Append this section to every dispatched agent prompt, after the `## Constraints` section:
+Before dispatching agents, validate that all task specs meet quality requirements:
 
-```
-## Completion Receipt Requirement
-
-When you finish your work, you MUST include this section at the END of your output:
-
-## Completion Receipt
-
-- **Task**: [your task ID]: [your task title]
-- **Status**: PASS | FAIL
-- **Files Modified**: [comma-separated list]
-- **Verification Command**: [exact command you ran]
-- **Verification Output**: [first 500 chars]
-- **Exit Code**: [0 or actual code]
-- **Acceptance Criteria Met**: YES | NO | PARTIAL
-- **Unresolved Issues**: [list or "None"]
-
-This receipt is validated by the completion-gate hook. Missing or incomplete receipts trigger warnings.
+```bash
+bd lint --parent {epic-id}
 ```
 
-CTO is auto-notified when background agents complete. After each agent completes, **track the outcome**, **update the label**, and mark it done:
+If any tasks are missing acceptance criteria, stop and report. Do not dispatch tasks with incomplete specs.
+
+### Agent Constraints (baked in)
+
+The dp-cto-implementer agent has the Completion Receipt format, TDD discipline, scope enforcement, and escalation protocol baked into its system prompt. Do NOT append these to the dispatch prompt — the agent already has them.
+
+The task-specific content (files, acceptance criteria, architectural context) still comes from the beads issue description (`bd show {task-id} --json`).
+
+CTO is auto-notified when background agents complete. After each agent completes, **track the outcome**, **update the agent state**, and mark it done:
 
 On success:
 
 ```bash
-bd comments add {task-id} "outcome: result=success iterations=1"
-bd label remove {task-id} "agent:dispatched" && bd label add {task-id} "agent:done"
+bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success","iterations":1}'
+bd agent state {task-id} done
+bd slot clear {task-id} hook
 bd close {task-id}
 ```
 
@@ -146,11 +165,10 @@ bd close {task-id}
 On failure:
 
 ```bash
-bd comments add {task-id} "outcome: result=failure iterations=1"
-bd label remove {task-id} "agent:dispatched" && bd label add {task-id} "agent:failed"
+bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure","iterations":1}'
+bd agent state {task-id} stuck
+bd slot clear {task-id} hook
 ```
-
-Always remove the previous label before adding the new one to prevent label stacking.
 
 After all agents in the current round complete, proceed to Step 2.5 (Round Checkpoint) before dispatching the next round.
 
@@ -168,23 +186,23 @@ Query the full task list to compute progress:
 bd list --parent {epic-id} --json
 ```
 
-Count tasks by status and labels, then emit:
+Count tasks by status and agent state, then emit:
 
 ```
-{done}/{total} tasks done, {running} running, {ready} ready. {failed} failed.
+{done}/{total} tasks done, {running} running, {ready} ready. {stuck} stuck.
 ```
 
 Where:
 
-- `{done}` = tasks with status `closed`
+- `{done}` = tasks in `done` agent state (or status `closed`)
 - `{total}` = all child tasks of the epic
-- `{running}` = tasks with label `agent:dispatched`
+- `{running}` = tasks in `running` agent state
 - `{ready}` = tasks returned by `bd ready` (unblocked, not yet dispatched)
-- `{failed}` = tasks with label `agent:failed`
+- `{stuck}` = tasks in `stuck` agent state
 
 ### Circuit Breaker
 
-If >50% of agents in the just-completed dispatch round failed (have the `agent:failed` label), pause execution and ask the user:
+If >50% of agents in the just-completed dispatch round are in `stuck` state, pause execution and ask the user:
 
 ```
 AskUserQuestion: "50%+ of this round failed. Options: Continue to next round / Re-dispatch failed tasks / Stop execution."
@@ -192,11 +210,11 @@ AskUserQuestion: "50%+ of this round failed. Options: Continue to next round / R
 
 Act on the user's choice:
 
-- **Continue to next round**: Re-query `bd ready --json` and dispatch the next batch normally. Failed tasks remain with `agent:failed` label.
-- **Re-dispatch failed tasks**: Remove the `agent:failed` label from each failed task, set them back to `in-progress`, re-extract their prompts, and re-dispatch as a fresh round. Follow the same dispatch protocol (label as `agent:dispatched`, track via comments).
+- **Continue to next round**: Re-query `bd ready --json` and dispatch the next batch normally. Stuck tasks remain in `stuck` state.
+- **Re-dispatch failed tasks**: For each stuck task, run `bd agent state {task-id} spawning`, set them back to `in-progress`, re-extract their prompts, and re-dispatch as a fresh round. Follow the same dispatch protocol (agent state tracking, audit records).
 - **Stop execution**: Halt work-run. The stage remains `executing` — the user can re-invoke `/dp-cto:work-run` to resume, or `/dp-cto:work-park` to suspend.
 
-If <=50% failed, proceed to the next `bd ready` round automatically (no pause).
+If <=50% stuck, proceed to the next `bd ready` round automatically (no pause).
 
 ### File-Change Injection for Downstream Tasks
 
@@ -236,45 +254,42 @@ Skip this step if no `[iterative]` tasks exist. Most well-planned tasks should b
 For each `[iterative]` task:
 
 1. Mark in progress: `bd update {task-id} --status in-progress`
-2. Extract the agent prompt from `bd show {task-id} --json` (the `description` field). Append the Completion Receipt Requirement. Apply file-change injection from Step 2.5 if upstream overlap exists.
-3. **Track the dispatch** — record when the agent is spawned:
+2. Extract the agent prompt from `bd show {task-id} --json` (the `description` field). Apply file-change injection from Step 2.5 if upstream overlap exists.
+3. **Track the dispatch** — record when the agent is spawned and register agent state:
 
 ```bash
-bd comments add {task-id} "dispatch: role=implementer type=iterative started=$(date -u +%Y-%m-%dT%H:%M:%SZ) max_iterations={N}"
+bd agent state {task-id} spawning
+bd slot set {task-id} hook {task-id}
+bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"iterative","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","max_iterations":'${N}'}'
+bd agent state {task-id} running
 ```
 
-4. **Label the task as dispatched** — same protocol as Step 2:
+4. Dispatch via the `Agent` tool with `subagent_type: "dp-cto-implementer"` and `run_in_background: true` (same as Step 2)
 
-```bash
-bd label add {task-id} "agent:dispatched"
-```
-
-5. Dispatch as a `[subagent]` task first (same as Step 2)
-
-After completion, **track the outcome**, **collect modified files** (same as Step 2 — extract from Completion Receipt or infer via `git diff`), and **update the label**:
+After completion, **track the outcome**, **collect modified files** (same as Step 2 — extract from Completion Receipt or infer via `git diff`), and **update the agent state**:
 
 On success:
 
 ```bash
-bd comments add {task-id} "outcome: result=success iterations={N}"
-bd label remove {task-id} "agent:dispatched" && bd label add {task-id} "agent:done"
+bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success","iterations":'${N}'}'
+bd agent state {task-id} done
+bd slot clear {task-id} hook
 bd close {task-id}
 ```
 
 On failure:
 
 ```bash
-bd comments add {task-id} "outcome: result=failure iterations={N}"
-bd label remove {task-id} "agent:dispatched" && bd label add {task-id} "agent:failed"
+bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure","iterations":'${N}'}'
+bd agent state {task-id} stuck
+bd slot clear {task-id} hook
 ```
-
-Always remove the previous label before adding the new one to prevent label stacking.
 
 If it fails the quality gate after 2 fix rounds in Step 5, mark it done with `bd close {task-id}`, report the failure to the user, and suggest they invoke `/dp-cto:work-run-loop` manually.
 
 After all iterative tasks in the current round complete, proceed to Step 2.5 (Round Checkpoint) before continuing.
 
-Ralph is an opt-in tool for tasks that genuinely need multiple iteration cycles. Do NOT auto-dispatch to work-run-loop — let the user decide.
+`work-run-loop` is an opt-in tool for tasks that genuinely need multiple iteration cycles. Do NOT auto-dispatch to work-run-loop — let the user decide.
 
 ## Step 4: Collaborative Dispatch (team, only if needed)
 
@@ -300,15 +315,17 @@ Agent Teams requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Before creating a
 Agent(name: "{task-id}-impl", team_name: "{feature}-collab", ...)
 ```
 
-5. Extract the agent prompt from `bd show {task-id} --json` (the `description` field) for each teammate. Append the Completion Receipt Requirement. Apply file-change injection from Step 2.5 if upstream overlap exists.
+5. Extract the agent prompt from `bd show {task-id} --json` (the `description` field) for each teammate. Apply file-change injection from Step 2.5 if upstream overlap exists.
 
 > **Note**: TeammateIdle and TaskCompleted hooks automatically enforce completion receipt discipline on dp-cto teams (identified by the `-collab` suffix). Teammates will be reminded to include receipts before going idle.
 
-6. **Track the dispatch and label** — for each teammate dispatched:
+6. **Track the dispatch and agent state** — for each teammate dispatched:
 
 ```bash
-bd comments add {task-id} "dispatch: role=implementer type=collaborative started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-bd label add {task-id} "agent:dispatched"
+bd agent state {task-id} spawning
+bd slot set {task-id} hook {task-id}
+bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"collaborative","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+bd agent state {task-id} running
 ```
 
 7. Monitor via `TaskList`, steer via `SendMessage`
@@ -319,24 +336,24 @@ SendMessage({ to: "{task-id-A}-impl", message: "Cross-review {task-id-B}-impl's 
 ```
 
 9. When all collaborative tasks complete and cross-reviews are resolved: shut down teammates via `SendMessage({ type: "shutdown_request" })`, then `TeamDelete()`
-10. **Update labels, collect modified files, and mark done** — for each completed collaborative task, collect modified files (same as Step 2 — extract from Completion Receipt or infer via `git diff`):
+10. **Update agent state, collect modified files, and mark done** — for each completed collaborative task, collect modified files (same as Step 2 — extract from Completion Receipt or infer via `git diff`):
 
 On success:
 
 ```bash
-bd comments add {task-id} "outcome: result=success"
-bd label remove {task-id} "agent:dispatched" && bd label add {task-id} "agent:done"
+bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success"}'
+bd agent state {task-id} done
+bd slot clear {task-id} hook
 bd close {task-id}
 ```
 
 On failure:
 
 ```bash
-bd comments add {task-id} "outcome: result=failure"
-bd label remove {task-id} "agent:dispatched" && bd label add {task-id} "agent:failed"
+bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure"}'
+bd agent state {task-id} stuck
+bd slot clear {task-id} hook
 ```
-
-Always remove the previous label before adding the new one to prevent label stacking.
 
 After all collaborative tasks complete, proceed to Step 2.5 (Round Checkpoint) before continuing to Step 5.
 
@@ -346,19 +363,17 @@ For each completed task (from any dispatch type), run a two-stage builder/valida
 
 ### Stage 1 — Validator Agent (read-only)
 
-Spawn a SEPARATE validation agent in the foreground. This agent has explicit read-only constraints.
+Spawn the `dp-cto-validator` agent via Agent tool with `subagent_type: "dp-cto-validator"`. The agent definition enforces read-only tool constraints structurally.
 
 **Track the validation dispatch**:
 
 ```bash
-bd comments add {task-id} "dispatch: role=validator type=subagent started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"validator","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
 ```
 
 **Validator agent prompt** — pass exactly this structure:
 
 ```
-You are a VALIDATOR. You may ONLY use Read, Glob, Grep, and Bash (read-only commands only). You MUST NOT use Edit, Write, or any file-modifying tool.
-
 ## Your Task
 
 Independently verify the builder's Completion Receipt for Task {task-id}: {task-title}.
@@ -392,7 +407,7 @@ You MUST output exactly one of:
 **Track the validation outcome**:
 
 ```bash
-bd comments add {task-id} "outcome: result={confirmed|disputed} role=validator"
+bd audit record --type validation --actor dp-cto --ref {task-id} --data '{"result":"{confirmed|disputed}","role":"validator"}'
 ```
 
 ### Stage 2 — Code Quality Review (only if Stage 1 is CONFIRMED)
@@ -406,18 +421,18 @@ If the validator outputs **CONFIRMED**, proceed to code quality review via `dp-c
 **Track the review dispatch**:
 
 ```bash
-bd comments add {task-id} "dispatch: role=reviewer type=subagent started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"reviewer","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
 ```
 
 Spawn a foreground review Agent with the builder's result + file diffs. After the review completes, **track the review outcome**:
 
 ```bash
-bd comments add {task-id} "outcome: result={pass|fail} issues_found={N} role=reviewer"
+bd audit record --type review --actor dp-cto --ref {task-id} --data '{"result":"{pass|fail}","issues_found":{N},"role":"reviewer"}'
 ```
 
-If issues found, spawn a fresh fix Agent (foreground) with the review feedback + original task spec + file scope. The fix agent must also produce a Completion Receipt. Re-validate (Stage 1) after fix. Max 2 fix rounds, then report the failure to the user and suggest they invoke `/dp-cto:work-run-loop` manually.
+If issues found, spawn a fresh fix Agent via `subagent_type: "dp-cto-implementer"` (foreground) with the review feedback + original task spec + file scope. Re-validate (Stage 1) after fix. Max 2 fix rounds, then report the failure to the user and suggest they invoke `/dp-cto:work-run-loop` manually.
 
-If the validator outputs **DISPUTED**, skip code quality review. Spawn a fresh fix agent (foreground) with the discrepancy details + original task spec + file scope. The fix agent must produce a Completion Receipt. Re-validate (Stage 1) after fix. Max 2 fix rounds.
+If the validator outputs **DISPUTED**, skip code quality review. Spawn a fresh fix agent via `subagent_type: "dp-cto-implementer"` (foreground) with the discrepancy details + original task spec + file scope. Re-validate (Stage 1) after fix. Max 2 fix rounds.
 
 ### Review by dispatch type
 

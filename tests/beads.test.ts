@@ -202,26 +202,38 @@ describe("work-run SKILL.md execute monitoring contract", () => {
     content = await readFile(WORK_RUN_SKILL, "utf-8");
   });
 
-  describe("agent identity labels", () => {
-    test("documents bd label add for agent:dispatched on dispatch", () => {
-      expect(content).toMatch(/bd label add \{task-id\} "agent:dispatched"/);
+  describe("agent state tracking", () => {
+    test("documents bd agent state spawning on dispatch", () => {
+      expect(content).toMatch(/bd agent state \{task-id\} spawning/);
     });
 
-    test("documents bd label remove agent:dispatched before agent:done", () => {
-      expect(content).toMatch(/bd label remove \{task-id\} "agent:dispatched"/);
+    test("documents bd agent state running after dispatch", () => {
+      expect(content).toMatch(/bd agent state \{task-id\} running/);
     });
 
-    test("documents bd label add for agent:done on success", () => {
-      expect(content).toMatch(/bd label add \{task-id\} "agent:done"/);
+    test("documents bd agent state done on success", () => {
+      expect(content).toMatch(/bd agent state \{task-id\} done/);
     });
 
-    test("documents bd label add for agent:failed on failure", () => {
-      expect(content).toMatch(/bd label add \{task-id\} "agent:failed"/);
+    test("documents bd agent state stuck on failure", () => {
+      expect(content).toMatch(/bd agent state \{task-id\} stuck/);
     });
 
-    test("existing dispatch comment protocol (bd comments add) remains", () => {
-      expect(content).toMatch(/bd comments add \{task-id\} "dispatch:/);
-      expect(content).toMatch(/bd comments add \{task-id\} "outcome:/);
+    test("dispatch and outcome tracking uses bd audit record", () => {
+      expect(content).toMatch(/bd audit record --type dispatch/);
+      expect(content).toMatch(/bd audit record --type outcome/);
+    });
+
+    test("documents bd slot set for hook registration on dispatch", () => {
+      expect(content).toMatch(/bd slot set \{task-id\} hook \{task-id\}/);
+    });
+
+    test("documents bd slot clear for hook cleanup on completion", () => {
+      expect(content).toMatch(/bd slot clear \{task-id\} hook/);
+    });
+
+    test("documents bd lint pre-dispatch validation", () => {
+      expect(content).toMatch(/bd lint --parent \{epic-id\}/);
     });
   });
 
@@ -232,7 +244,7 @@ describe("work-run SKILL.md execute monitoring contract", () => {
 
     test("documents progress summary format", () => {
       expect(content).toMatch(
-        /\{done\}\/\{total\} tasks done, \{running\} running, \{ready\} ready\. \{failed\} failed\./,
+        /\{done\}\/\{total\} tasks done, \{running\} running, \{ready\} ready\. \{stuck\} stuck\./,
       );
     });
 

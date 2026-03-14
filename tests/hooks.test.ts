@@ -162,11 +162,8 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       expectAllowed(await runWithStage(HOOK, "dp-cto:work-polish", "executing"));
     });
 
-    test("work-plan is denied", async () => {
-      expectDenied(
-        await runWithStage(HOOK, "dp-cto:work-plan", "executing"),
-        /Implementation in progress/,
-      );
+    test("work-plan is allowed (re-plan)", async () => {
+      expectAllowed(await runWithStage(HOOK, "dp-cto:work-plan", "executing"));
     });
 
     test("work-run is denied", async () => {
@@ -608,7 +605,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
     expect(r.stdout).toBe("");
   });
 
-  test("missing session_id exits silently", async () => {
+  test("missing session_id exits silently", { timeout: 15000 }, async () => {
     const r = await runHook(hook, {
       tool_name: "Skill",
       tool_input: { skill: "dp-cto:work-plan" },

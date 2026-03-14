@@ -99,17 +99,17 @@ If no sprint epic found: omit this section entirely (do not show an empty sectio
 
 ## Section 4: Agent Status
 
-Query three agent label sets:
+Query agent states:
 
 ```bash
-bd query "label=agent:dispatched" --json
-bd query "label=agent:failed" --json
-bd query "label=agent:done" --json
+bd agent state --filter running --json
+bd agent state --filter stuck --json
+bd agent state --filter done --json
 ```
 
 If ALL three queries return empty results: omit this section entirely.
 
-Otherwise, merge results into a single table sorted by: failed first, then dispatched, then done. For each task, extract the task ID and title from the JSON output.
+Otherwise, merge results into a single table sorted by: stuck first, then running, then done. For each task, extract the task ID and title from the JSON output.
 
 Present as:
 
@@ -118,12 +118,12 @@ Present as:
 
 | Task | Status | Title |
 |------|--------|-------|
-| {task-id} | failed | {title} |
-| {task-id} | dispatched | {title} |
+| {task-id} | stuck | {title} |
+| {task-id} | running | {title} |
 | {task-id} | done | {title} |
 ```
 
-Status values map directly from the label suffix: `agent:dispatched` → `dispatched`, `agent:failed` → `failed`, `agent:done` → `done`.
+Status values come from the `bd agent state` output: `running`, `stuck`, `done`.
 
 ## Section 5: Ready Work
 

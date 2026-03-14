@@ -90,7 +90,7 @@ case "$SKILL_NAME" in
         ;;
       executing)
         case "$SKILL" in
-          work-run-loop|quality-fact-check|work-polish|work-park) ALLOWED=true ;;
+          work-plan|work-run-loop|quality-fact-check|work-polish|work-park) ALLOWED=true ;;
           *) REASON="Implementation in progress. Complete execution first, or use /dp-cto:work-stop-loop to abort." ;;
         esac
         ;;

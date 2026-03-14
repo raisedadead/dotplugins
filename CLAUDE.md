@@ -25,6 +25,7 @@ pnpm run release -- patch   # release: patch|minor|major|x.y.z (scripts/release.
 - `category` goes in marketplace.json only (NOT in plugin.json — rejected by official validator)
 - `pnpm run release -- <bump>` prompts for confirmation — pipe `echo "y"` for non-interactive use
 - All hook scripts must pass `shellcheck -S warning`
+- Plugin agents live in `plugins/dp-cto/agents/` as flat `.md` files (auto-discovered by Claude Code)
 - `${CLAUDE_SKILL_DIR}` resolves to the skill's own directory (e.g., `plugins/dp-cto/skills/work-run/`). Use for co-located resources. `${CLAUDE_PLUGIN_ROOT}` resolves to the plugin root (e.g., `plugins/dp-cto/`). Use for shared hooks/config.
 
 ## Installation
