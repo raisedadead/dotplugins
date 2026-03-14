@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+[[ "${1:-}" == "--" ]] && shift
 BUMP="${1:-}"
 if [ -z "$BUMP" ]; then
     echo "Usage: pnpm run release -- patch|minor|major|x.y.z" >&2; exit 1
