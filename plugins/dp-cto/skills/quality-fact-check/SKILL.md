@@ -1,6 +1,7 @@
 ---
 name: quality-fact-check
 description: "Manual deep-validation of research findings. Forces structured claim-by-claim verification with evidence requirements."
+user-invocable: false
 ---
 
 # Deep Validation Check

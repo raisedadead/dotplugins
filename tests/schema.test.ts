@@ -20,6 +20,7 @@ const VALID_EVENTS = [
   "PermissionRequest",
   "PostToolUse",
   "PostToolUseFailure",
+  "PostCompact",
   "Notification",
   "SubagentStart",
   "SubagentStop",

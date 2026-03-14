@@ -194,6 +194,7 @@ You are implementing Task N: [Component Name].
 ## Context
 
 [2-3 sentences of architectural context from the analysis — how this task fits into the whole]
+**Available variables**: `${CLAUDE_SKILL_DIR}` resolves to this skill's directory. Use it to reference co-located scripts or data files.
 
 ## When Stuck
 

@@ -1,6 +1,7 @@
 ---
 name: quality-deep-debug
 description: "Structured root-cause debugging. Enforces 4-phase investigation before any fix attempts. Prevents guess-and-check thrashing."
+user-invocable: false
 ---
 
 # Systematic Debugging

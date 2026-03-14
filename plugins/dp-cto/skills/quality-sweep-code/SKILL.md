@@ -1,6 +1,7 @@
 ---
 name: quality-sweep-code
 description: "Entropy management and pattern drift detection. Spawns parallel review agents per drift category (dead code, inconsistent patterns, stale comments, naming violations). Auto-fixes critical/warning findings via one-shot agents with quality gate verification."
+user-invocable: false
 ---
 
 <EXTREMELY_IMPORTANT>

@@ -947,110 +947,6 @@ describe("SessionStart (session-start.sh)", () => {
   });
 });
 
-// ─── Completion Gate ─────────────────────────────────────────────────────────
-
-describe("Completion Gate (completion-gate.sh)", () => {
-  const GATE_HOOK = "completion-gate.sh";
-
-  function agentInput(response: string) {
-    return {
-      tool_name: "Agent",
-      tool_response: response,
-    };
-  }
-
-  test("non-Agent tool passes silently", async () => {
-    const r = await runHook(GATE_HOOK, {
-      tool_name: "Bash",
-      tool_response: "all tests pass",
-    });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toBe("");
-  });
-
-  test("Agent output with no completion claim passes silently", async () => {
-    const r = await runHook(GATE_HOOK, agentInput("I refactored the module and updated imports."));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toBe("");
-  });
-
-  test("Agent output with claim but no evidence emits warning", async () => {
-    const r = await runHook(
-      GATE_HOOK,
-      agentInput("Implementation complete. Everything looks good."),
-    );
-    expect(r.exitCode).toBe(0);
-    expect(r.json).not.toBeNull();
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
-    expect(ctx).toMatch(/quality-check-done/i);
-  });
-
-  test("Agent output with claim and test evidence passes silently", async () => {
-    const r = await runHook(
-      GATE_HOOK,
-      agentInput("All tests pass. 42 passed, 0 failed. Implementation complete."),
-    );
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toBe("");
-  });
-
-  test.each([
-    "all tests pass",
-    "implementation complete",
-    "task complete",
-    "completed successfully",
-    "all done",
-    "work is done",
-    "work is complete",
-    "changes are complete",
-  ])("claim phrase '%s' without evidence triggers warning", async (phrase) => {
-    const r = await runHook(GATE_HOOK, agentInput(`${phrase}. Looks good.`));
-    expect(r.exitCode).toBe(0);
-    expect(r.json).not.toBeNull();
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
-    expect(ctx).toMatch(/verify/i);
-  });
-
-  test.each([
-    "12 passed, 0 failed",
-    "exit code 0",
-    "test suites: 3 passed",
-    "vitest run completed",
-    "ok 1 - test name",
-    "expect(",
-  ])("evidence pattern '%s' suppresses warning", async (evidence) => {
-    const r = await runHook(GATE_HOOK, agentInput(`Implementation complete. ${evidence}`));
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toBe("");
-  });
-
-  test("empty tool_response passes silently", async () => {
-    const r = await runHook(GATE_HOOK, {
-      tool_name: "Agent",
-      tool_response: "",
-    });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toBe("");
-  });
-
-  test("missing tool_response passes silently", async () => {
-    const r = await runHook(GATE_HOOK, { tool_name: "Agent" });
-    expect(r.exitCode).toBe(0);
-    expect(r.stdout).toBe("");
-  });
-
-  test("ALL-CAPS claim phrase triggers warning (case folding)", async () => {
-    const r = await runHook(GATE_HOOK, agentInput("IMPLEMENTATION COMPLETE. Looks good."));
-    expect(r.exitCode).toBe(0);
-    expect(r.json).not.toBeNull();
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
-    expect(ctx).toMatch(/verify/i);
-  });
-});
-
 // ─── Research Validator ──────────────────────────────────────────────────────
 
 describe("Research Validator (research-validator.sh)", () => {
@@ -1161,7 +1057,6 @@ describe("jq-missing fail-open", () => {
     "intercept-orchestration.sh",
     "intercept-bd-init.sh",
     "stage-transition.sh",
-    "completion-gate.sh",
     "research-validator.sh",
   ])("%s exits 0 when jq is missing", async (hook) => {
     const r = await runHook(

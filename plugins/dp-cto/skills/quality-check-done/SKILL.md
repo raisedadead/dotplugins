@@ -1,6 +1,7 @@
 ---
 name: quality-check-done
 description: "Enforces evidence-based completion claims. Run before claiming work is complete, fixed, or passing. No 'should pass', no 'probably', no 'seems to' — only claims backed by fresh command output."
+user-invocable: false
 ---
 
 # dp-cto:quality-check-done — Verification Before Completion

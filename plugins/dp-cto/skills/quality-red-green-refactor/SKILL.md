@@ -1,6 +1,7 @@
 ---
 name: quality-red-green-refactor
 description: "Test-driven development discipline enforcement. Invoke before writing any production code. Enforces RED-GREEN-REFACTOR with no exceptions."
+user-invocable: false
 ---
 
 # TDD Enforcement

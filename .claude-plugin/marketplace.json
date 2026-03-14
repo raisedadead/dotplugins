@@ -1,7 +1,5 @@
 {
-  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "dotplugins",
-  "description": "Personal Claude Code plugin marketplace by Mrugesh — orchestration, iterative loops, and development workflow tools.",
   "owner": {
     "name": "Mrugesh",
     "email": "m@raisedadead.com"

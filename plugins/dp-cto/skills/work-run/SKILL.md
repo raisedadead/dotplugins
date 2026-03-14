@@ -1,6 +1,6 @@
 ---
 name: work-run
-description: "Execute an implementation plan using adaptive dispatch (primarily subagents; iterative loops and collaborative teams where needed). Requires a plan from /dp-cto:work-plan."
+description: "Execute an implementation plan using adaptive dispatch (primarily subagents; iterative loops and Agent Teams for collaborative work where needed). Requires a plan from /dp-cto:work-plan."
 ---
 
 <EXTREMELY_IMPORTANT>
@@ -280,11 +280,30 @@ Ralph is an opt-in tool for tasks that genuinely need multiple iteration cycles.
 
 Skip this entire step if there are no `[collaborative]` tasks in the plan.
 
-1. `TeamCreate({ team_name: "<feature>-collab" })`
+### Pre-check: Agent Teams Availability
+
+Agent Teams requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Before creating a team:
+
+1. Attempt `TeamCreate`. If it fails with an "experimental" or "not enabled" error:
+   - **Fallback**: Dispatch `[collaborative]` tasks as sequential `[subagent]` tasks instead. Log: "Agent Teams not enabled — falling back to sequential subagent dispatch for collaborative tasks."
+   - Cross-review between tasks is skipped in fallback mode.
+2. If TeamCreate succeeds, proceed with team-based dispatch below.
+
+### Team-Based Dispatch
+
+1. `TeamCreate({ team_name: "{feature}-collab" })`
 2. For each collaborative task: `TaskCreate` with description, file scope, acceptance criteria
 3. Set `addBlockedBy` for sequential dependencies
-4. Spawn teammates via `Agent` tool with `team_name` parameter
+4. Spawn teammates via `Agent` tool with `team_name` and `name` parameters. Each teammate is named `{task-id}-impl` for beads correlation:
+
+```
+Agent(name: "{task-id}-impl", team_name: "{feature}-collab", ...)
+```
+
 5. Extract the agent prompt from `bd show {task-id} --json` (the `description` field) for each teammate. Append the Completion Receipt Requirement. Apply file-change injection from Step 2.5 if upstream overlap exists.
+
+> **Note**: TeammateIdle and TaskCompleted hooks automatically enforce completion receipt discipline on dp-cto teams (identified by the `-collab` suffix). Teammates will be reminded to include receipts before going idle.
+
 6. **Track the dispatch and label** — for each teammate dispatched:
 
 ```bash
@@ -293,8 +312,13 @@ bd label add {task-id} "agent:dispatched"
 ```
 
 7. Monitor via `TaskList`, steer via `SendMessage`
-8. Ask teammates to cross-review each other's work
-9. When all collaborative tasks complete: shut down teammates via `SendMessage({ type: "shutdown_request" })`, then `TeamDelete()`
+8. After all teammates report completion, instruct cross-review via SendMessage:
+
+```
+SendMessage({ to: "{task-id-A}-impl", message: "Cross-review {task-id-B}-impl's work. Check: file scope compliance, test coverage, pattern consistency. Report CONFIRMED or DISPUTED." })
+```
+
+9. When all collaborative tasks complete and cross-reviews are resolved: shut down teammates via `SendMessage({ type: "shutdown_request" })`, then `TeamDelete()`
 10. **Update labels, collect modified files, and mark done** — for each completed collaborative task, collect modified files (same as Step 2 — extract from Completion Receipt or infer via `git diff`):
 
 On success:

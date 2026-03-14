@@ -25,6 +25,7 @@ pnpm run release -- patch   # release: patch|minor|major|x.y.z (scripts/release.
 - `category` goes in marketplace.json only (NOT in plugin.json — rejected by official validator)
 - `pnpm run release -- <bump>` prompts for confirmation — pipe `echo "y"` for non-interactive use
 - All hook scripts must pass `shellcheck -S warning`
+- `${CLAUDE_SKILL_DIR}` resolves to the skill's own directory (e.g., `plugins/dp-cto/skills/work-run/`). Use for co-located resources. `${CLAUDE_PLUGIN_ROOT}` resolves to the plugin root (e.g., `plugins/dp-cto/`). Use for shared hooks/config.
 
 ## Installation
 
@@ -36,3 +37,5 @@ claude plugin install dp-cto@dotplugins
 ## Prerequisites
 
 After installing the plugin, run `bd setup claude --project` in your repo to install beads native hooks (SessionStart context injection + PreCompact state preservation). dp-cto relies on these for full functionality.
+
+For Agent Teams support (collaborative dispatch), set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in your shell environment. Without this, `[collaborative]` tasks fall back to sequential subagent dispatch.
