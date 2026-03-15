@@ -65,9 +65,8 @@
         "matcher": "Agent",
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "Evaluate this Agent tool output for completion receipt compliance.\n\nAgent output (in the tool_response field of the JSON input):\n$ARGUMENTS\n\nRules:\n1. Look for a '## Completion Receipt' section in the tool_response.\n2. If NO receipt section exists AND the output contains completion claims (like 'all tests pass', 'implementation complete', 'task complete', 'all done', 'completed successfully') WITHOUT test evidence (test output, exit codes, assertion results), return {\"ok\": false, \"reason\": \"Agent claimed completion without test evidence. Verify with dp-cto:quality-check-done before accepting.\"}.\n3. If NO receipt section exists and there are no completion claims, return {\"ok\": true}.\n4. If a receipt section EXISTS, check for these required fields: Task, Status, Verification Command, Exit Code, Acceptance Criteria Met.\n5. If any required fields are missing, return {\"ok\": false, \"reason\": \"Completion Receipt found but missing required fields: [list missing]. Verify with dp-cto:quality-check-done.\"}.\n6. If all fields exist, check: Status must be PASS, Exit Code must be 0, Acceptance Criteria Met must be YES. If any fail, return {\"ok\": false, \"reason\": \"Completion Receipt found but: [list issues like Status=FAIL, Exit Code=1]. Verify with dp-cto:quality-check-done.\"}.\n7. If receipt is complete and all checks pass, return {\"ok\": true}.",
-            "statusMessage": "Validating completion receipt..."
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/receipt-gate.sh"
           }
         ]
       }

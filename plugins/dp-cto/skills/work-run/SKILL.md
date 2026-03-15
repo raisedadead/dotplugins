@@ -394,7 +394,7 @@ Spawn the `dp-cto-validator` agent via Agent tool with `subagent_type: "dp-cto-v
 bd audit record -q --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"validator","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
 ```
 
-**Validator agent prompt** — pass exactly this structure:
+**Validator agent prompt** — pass exactly this structure. Before dispatching, substitute `{ROUND_BASELINE}` with the actual SHA captured at the start of the dispatch round (`ROUND_BASELINE=$(git rev-parse HEAD)` from Step 2):
 
 ```
 ## Your Task
@@ -413,12 +413,18 @@ Independently verify the builder's Completion Receipt for Task {task-id}: {task-
 
 {list the files from the task's ## Files section}
 
+## Round Baseline
+
+The round baseline commit is `{ROUND_BASELINE}`. Use this to scope your file change checks:
+- `git diff --name-only {ROUND_BASELINE}` — shows only files changed in this round
+- Do NOT use `git diff --name-only` without a baseline — it shows ALL uncommitted changes across all tasks
+
 ## Instructions
 
 1. Run the verification command from the receipt. Compare the output to what the receipt claims.
-2. Check that every file listed in "Files Modified" exists and was actually changed.
+2. Check that every file listed in "Files Modified" exists and was actually changed since the round baseline. Run `git diff --name-only {ROUND_BASELINE}` to see actual changes.
 3. Verify each acceptance criterion independently — do not trust the builder's claim.
-4. Check that no files outside the declared scope were modified.
+4. Check that no files outside the declared scope were modified since the round baseline. Compare `git diff --name-only {ROUND_BASELINE}` against the task's declared file scope.
 
 ## Output
 

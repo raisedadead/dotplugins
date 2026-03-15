@@ -1,71 +1,144 @@
-import { describe, test, expect, beforeAll } from "vitest";
-import { readFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { describe, test, expect, beforeEach, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, symlink, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { runHook } from "./helpers";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const REPO_ROOT = join(__dirname, "..");
-const HOOKS_JSON = join(REPO_ROOT, "plugins", "dp-cto", "hooks", "hooks.json");
+const HOOK = "receipt-gate.sh";
 
-interface HookEntry {
-  type: string;
-  prompt?: string;
-  command?: string;
-  statusMessage?: string;
+function makeInput(subagentType: string, toolResponse: string) {
+  return {
+    hook_event_name: "PostToolUse",
+    tool_name: "Agent",
+    tool_input: {
+      subagent_type: subagentType,
+      prompt: "test prompt",
+    },
+    tool_response: toolResponse,
+  };
 }
 
-interface MatcherEntry {
-  matcher: string;
-  hooks: HookEntry[];
-}
+const VALID_RECEIPT = [
+  "Some agent output text.",
+  "",
+  "## Completion Receipt",
+  "",
+  "- **Task**: test-task",
+  "- **Status**: PASS",
+  "- **Verification Command**: pnpm test",
+  "- **Exit Code**: 0",
+  "- **Acceptance Criteria Met**: YES",
+].join("\n");
 
-interface HooksFile {
-  hooks: Record<string, MatcherEntry[]>;
-}
+const PARTIAL_RECEIPT = [
+  "Some agent output text.",
+  "",
+  "## Completion Receipt",
+  "",
+  "- **Task**: test-task",
+  "- **Status**: PASS",
+].join("\n");
 
-const REQUIRED_FIELDS = [
-  "Task",
-  "Status",
-  "Verification Command",
-  "Exit Code",
-  "Acceptance Criteria Met",
-];
+const NO_RECEIPT = "Some agent output without any receipt section.";
 
-describe("completion-gate prompt hook — structural validation", () => {
-  let hooksData: HooksFile;
-  let agentMatcher: MatcherEntry;
-  let promptHook: HookEntry;
-
-  beforeAll(async () => {
-    hooksData = JSON.parse(await readFile(HOOKS_JSON, "utf-8")) as HooksFile;
-    const postToolUse = hooksData.hooks.PostToolUse;
-    agentMatcher = postToolUse.find((m) => m.matcher === "Agent")!;
-    promptHook = agentMatcher.hooks[0];
-  });
-
-  test("PostToolUse has a matcher for Agent with type prompt", () => {
-    expect(agentMatcher).toBeDefined();
-    expect(agentMatcher.hooks).toBeInstanceOf(Array);
-    expect(agentMatcher.hooks.length).toBeGreaterThan(0);
-    expect(promptHook.type).toBe("prompt");
-  });
-
-  test("prompt text contains Completion Receipt reference", () => {
-    expect(promptHook.prompt).toContain("Completion Receipt");
-  });
-
-  test("prompt text contains required fields reference", () => {
-    expect(promptHook.prompt).toContain("required fields");
-  });
-
-  test("prompt text mentions all five required receipt fields", () => {
-    for (const field of REQUIRED_FIELDS) {
-      expect(promptHook.prompt, `prompt should mention "${field}"`).toContain(field);
+async function createNoJqPath(): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), "no-jq-"));
+  const bins = ["bash", "cat", "grep", "printf", "echo"];
+  for (const bin of bins) {
+    try {
+      const realPath = execFileSync("which", [bin], { encoding: "utf-8" }).trim();
+      if (realPath) await symlink(realPath, join(dir, bin));
+    } catch {
+      /* skip if not found */
     }
+  }
+  return dir;
+}
+
+describe("receipt-gate.sh — agent type routing", () => {
+  test("dp-cto:dp-cto-implementer triggers receipt check", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto:dp-cto-implementer", NO_RECEIPT));
+    expect(r.exitCode).toBe(0);
+    expect(r.json?.systemMessage).toBeDefined();
   });
 
-  test("prompt hook has a statusMessage field", () => {
-    expect(promptHook.statusMessage).toBeTypeOf("string");
-    expect(promptHook.statusMessage!.length).toBeGreaterThan(0);
+  test("dp-cto-implementer (without prefix) triggers receipt check", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto-implementer", NO_RECEIPT));
+    expect(r.exitCode).toBe(0);
+    expect(r.json?.systemMessage).toBeDefined();
+  });
+
+  test("dp-cto:dp-cto-validator passes through (exit 0, no output)", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto:dp-cto-validator", NO_RECEIPT));
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  test("dp-cto:dp-cto-reviewer passes through (exit 0, no output)", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto:dp-cto-reviewer", NO_RECEIPT));
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  test("no subagent_type passes through (exit 0, no output)", async () => {
+    const r = await runHook(HOOK, {
+      hook_event_name: "PostToolUse",
+      tool_name: "Agent",
+      tool_input: { prompt: "test prompt" },
+      tool_response: NO_RECEIPT,
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+});
+
+describe("receipt-gate.sh — receipt validation (implementer)", () => {
+  test("valid receipt with all required fields exits cleanly", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto:dp-cto-implementer", VALID_RECEIPT));
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe("");
+  });
+
+  test("missing receipt section entirely emits systemMessage warning", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto:dp-cto-implementer", NO_RECEIPT));
+    expect(r.exitCode).toBe(0);
+    expect(r.json).not.toBeNull();
+    expect(r.json?.systemMessage).toMatch(/Receipt warning/);
+    expect(r.json?.systemMessage).toMatch(/Completion Receipt/);
+  });
+
+  test("receipt present but missing fields emits systemMessage listing them", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto:dp-cto-implementer", PARTIAL_RECEIPT));
+    expect(r.exitCode).toBe(0);
+    expect(r.json).not.toBeNull();
+    const msg = r.json?.systemMessage as string;
+    expect(msg).toMatch(/Receipt warning/);
+    expect(msg).toMatch(/missing required fields/);
+    expect(msg).toContain("Verification Command");
+    expect(msg).toContain("Exit Code");
+    expect(msg).toContain("Acceptance Criteria Met");
+    expect(msg).not.toContain("Task");
+    expect(msg).not.toContain("Status");
+  });
+});
+
+describe("receipt-gate.sh — fail-open behavior", () => {
+  let noJqDir: string;
+
+  beforeEach(async () => {
+    noJqDir = await createNoJqPath();
+  });
+
+  afterEach(async () => {
+    await rm(noJqDir, { recursive: true, force: true });
+  });
+
+  test("no jq available exits 0 with no output", async () => {
+    const r = await runHook(HOOK, makeInput("dp-cto:dp-cto-implementer", NO_RECEIPT), {
+      PATH: noJqDir,
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.stdout).toBe("");
   });
 });
