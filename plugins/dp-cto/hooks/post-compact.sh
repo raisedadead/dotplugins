@@ -66,4 +66,4 @@ else
 fi
 
 jq -n --arg ctx "$ADDITIONAL_CONTEXT" \
-  '{hookSpecificOutput: {hookEventName: "PostCompact", additionalContext: $ctx}}'
+  '{systemMessage: $ctx}'

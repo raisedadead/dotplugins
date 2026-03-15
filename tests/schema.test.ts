@@ -413,6 +413,127 @@ describe("Agent frontmatter", () => {
   });
 });
 
+// ─── Hook Output Schema Compliance ───────────────────────────────────────
+
+const HOOKS_DIR = join(PLUGIN_ROOT, "hooks");
+
+const VALID_HOOK_EVENT_NAMES = [
+  "SessionStart",
+  "PreToolUse",
+  "PostToolUse",
+  "PostToolUseFailure",
+  "UserPromptSubmit",
+  "PermissionRequest",
+  "Notification",
+  "SubagentStart",
+  "Setup",
+  "Elicitation",
+  "ElicitationResult",
+] as const;
+
+describe("Hook output schema compliance", () => {
+  let hookFiles: { name: string; content: string }[];
+
+  beforeAll(async () => {
+    const entries = await readdir(HOOKS_DIR, { withFileTypes: true });
+    const shFiles = entries.filter((e) => e.isFile() && e.name.endsWith(".sh")).map((e) => e.name);
+    hookFiles = await Promise.all(
+      shFiles.map(async (name) => ({
+        name,
+        content: await readFile(join(HOOKS_DIR, name), "utf-8"),
+      })),
+    );
+  });
+
+  test("VALID_HOOK_EVENT_NAMES has exactly 11 entries", () => {
+    expect(VALID_HOOK_EVENT_NAMES).toHaveLength(11);
+  });
+
+  test("all hookEventName literals in hook scripts are valid", () => {
+    // Matches both JSON ("hookEventName": "Value") and jq (hookEventName: "Value") patterns
+    const hookEventNamePattern = /hookEventName["']?\s*[,:]\s*["']([A-Za-z]+)["']/g;
+
+    for (const { name, content } of hookFiles) {
+      let match: RegExpExecArray | null;
+      while ((match = hookEventNamePattern.exec(content)) !== null) {
+        const value = match[1];
+        expect(
+          (VALID_HOOK_EVENT_NAMES as readonly string[]).includes(value),
+          `${name} uses invalid hookEventName "${value}" — must be one of: ${VALID_HOOK_EVENT_NAMES.join(", ")}`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  test("hooks using systemMessage do not include invalid hookEventName", () => {
+    const systemMessagePattern = /systemMessage/;
+    const hookEventNamePattern = /hookEventName["']?\s*[,:]\s*["']([A-Za-z]+)["']/g;
+
+    for (const { name, content } of hookFiles) {
+      if (!systemMessagePattern.test(content)) continue;
+
+      const outputBlocks = content.split(/jq\s+-n/);
+      for (const block of outputBlocks) {
+        if (!block.includes("systemMessage")) continue;
+
+        let match: RegExpExecArray | null;
+        while ((match = hookEventNamePattern.exec(block)) !== null) {
+          const value = match[1];
+          expect(
+            false,
+            `${name} has a systemMessage output block that also contains hookEventName "${value}" — these are mutually exclusive output patterns`,
+          ).toBe(true);
+        }
+      }
+    }
+  });
+
+  test("each hook script uses a valid output pattern", () => {
+    const validPatterns = {
+      hookSpecificWithEventName: /hookSpecificOutput.*hookEventName/s,
+      hookSpecificWithPermission: /hookSpecificOutput.*permissionDecision/s,
+      systemMessage: /systemMessage/,
+      noJsonOutput: /^(?!.*hookSpecificOutput)(?!.*systemMessage)(?!.*"continue")/s,
+      continueStop: /"continue"\s*:\s*false/,
+      stderrOnly: /echo\s+.*>&2\s*\n\s*exit\s+2/,
+    };
+
+    for (const { name, content } of hookFiles) {
+      const hasHookSpecificEventName = validPatterns.hookSpecificWithEventName.test(content);
+      const hasPermissionDecision = validPatterns.hookSpecificWithPermission.test(content);
+      const hasSystemMessage = validPatterns.systemMessage.test(content);
+      const hasStderrOnly = validPatterns.stderrOnly.test(content);
+
+      const usesAtLeastOnePattern =
+        hasHookSpecificEventName ||
+        hasPermissionDecision ||
+        hasSystemMessage ||
+        hasStderrOnly ||
+        !content.includes("hookSpecificOutput");
+
+      expect(
+        usesAtLeastOnePattern,
+        `${name} does not match any valid output pattern (hookSpecificOutput+hookEventName, hookSpecificOutput+permissionDecision, systemMessage, stderrOnly, or no JSON output)`,
+      ).toBe(true);
+    }
+  });
+
+  test("hookSpecificOutput with hookEventName always includes additionalContext", () => {
+    const eventNameOutputPattern = /jq\s+-n[^|;]*hookSpecificOutput[^}]*hookEventName[^}]*\}/gs;
+
+    for (const { name, content } of hookFiles) {
+      let match: RegExpExecArray | null;
+      while ((match = eventNameOutputPattern.exec(content)) !== null) {
+        const block = match[0];
+        expect(
+          block.includes("additionalContext"),
+          `${name} has hookSpecificOutput with hookEventName but missing additionalContext`,
+        ).toBe(true);
+      }
+    }
+  });
+});
+
 // ─── Schema Snapshots & Drift Detection ─────────────────────────────────────
 
 describe("Schema snapshots", () => {

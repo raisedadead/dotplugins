@@ -40,8 +40,7 @@ describe("PostCompact (post-compact.sh)", () => {
     );
     expect(r.exitCode).toBe(0);
     expect(r.json).not.toBeNull();
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
+    const ctx = r.json?.systemMessage as string;
     expect(ctx).toMatch(/dp-cto: Stage enforcement/);
     expect(ctx).toMatch(/RECOVERY:/);
   });
@@ -61,8 +60,7 @@ describe("PostCompact (post-compact.sh)", () => {
     );
     expect(r.exitCode).toBe(0);
     expect(r.json).not.toBeNull();
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
+    const ctx = r.json?.systemMessage as string;
     expect(ctx).toMatch(/dp-cto: Stage enforcement/);
     expect(ctx).not.toMatch(/RECOVERY:/);
   });
@@ -115,8 +113,7 @@ describe("PostCompact (post-compact.sh)", () => {
       );
       expect(r.exitCode).toBe(0);
       expect(r.json).not.toBeNull();
-      const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-        ?.additionalContext as string;
+      const ctx = r.json?.systemMessage as string;
       expect(ctx).toMatch(/dp-cto: Stage enforcement/);
       expect(ctx).not.toMatch(/RECOVERY:/);
     } finally {
@@ -139,8 +136,7 @@ describe("PostCompact (post-compact.sh)", () => {
     );
     expect(r.exitCode).toBe(0);
     expect(r.json).not.toBeNull();
-    const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
-      ?.additionalContext as string;
+    const ctx = r.json?.systemMessage as string;
     expect(ctx).toMatch(/dp-cto: Stage enforcement/);
   });
 });
