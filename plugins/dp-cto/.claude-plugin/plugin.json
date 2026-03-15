@@ -1,6 +1,6 @@
 {
   "name": "dp-cto",
-  "version": "3.7.0",
+  "version": "3.8.0",
   "description": "CTO orchestration layer — /dp-cto:work-plan for brainstorming and planning, /dp-cto:work-run for adaptive dispatch with Agent Teams and beads-aware harness hooks, /dp-cto:work-run-loop for iterative loops, /dp-cto:work-polish for multi-perspective review, /dp-cto:quality-fact-check for research validation. PostCompact state preservation ensures stage machine survives long sessions.",
   "author": {
     "name": "Mrugesh",
