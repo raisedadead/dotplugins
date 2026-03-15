@@ -91,7 +91,7 @@ Show the user the selected lenses and detected quality-gate command, then procee
 
 ## Step 2: Spawn Parallel Review Agents
 
-For each selected lens, spawn a `general-purpose` agent via the Agent tool.
+For each selected lens, spawn a `dp-cto-reviewer` agent via the Agent tool.
 
 All agents run **in parallel** (single message, multiple Agent tool calls).
 
@@ -210,7 +210,7 @@ Where `{lens}` is one of: `security`, `simplification`, `test-gaps`, `linting`, 
 
 ### 4b: Spawn Fix Agents
 
-For each finding (or group of findings in the same file), spawn a one-shot `general-purpose` agent:
+For each finding (or group of findings in the same file), spawn a one-shot `dp-cto-implementer` agent:
 
 - Provide the exact finding(s) with file path, line number, and suggested fix
 - Scope the agent to ONLY the affected file(s)

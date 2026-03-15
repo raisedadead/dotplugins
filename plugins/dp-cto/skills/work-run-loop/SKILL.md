@@ -154,7 +154,7 @@ Repeat the following until a stop condition is met.
 
 Spawn an iteration agent via the Agent tool:
 
-- `subagent_type`: `"general-purpose"`
+- `subagent_type`: `"dp-cto-implementer"`
 - `description`: `"work-run-loop iteration {N}"`
 
 The agent prompt MUST be constructed EXACTLY as follows — do NOT abbreviate or omit sections:

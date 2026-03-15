@@ -32,7 +32,7 @@ BASE_SHA=$(git rev-parse HEAD~1)  # or origin/main
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
-**2. Spawn a review agent** via the Agent tool (`general-purpose` type). Include in the prompt:
+**2. Spawn a review agent** via the Agent tool (`dp-cto-reviewer` type). Include in the prompt:
 
 - What was implemented and why
 - The plan or requirements it should satisfy

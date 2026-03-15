@@ -28,6 +28,17 @@ pnpm run release -- patch   # release: patch|minor|major|x.y.z (scripts/release.
 - Plugin agents live in `plugins/dp-cto/agents/` as flat `.md` files (auto-discovered by Claude Code)
 - `${CLAUDE_SKILL_DIR}` resolves to the skill's own directory (e.g., `plugins/dp-cto/skills/work-run/`). Use for co-located resources. `${CLAUDE_PLUGIN_ROOT}` resolves to the plugin root (e.g., `plugins/dp-cto/`). Use for shared hooks/config.
 
+## Agent Teams
+
+For `[collaborative]` tasks dispatched by work-run, Agent Teams provides real-time visibility into teammate work:
+
+- **Enable**: Set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in your shell environment
+- **Split-pane mode**: Use tmux or iTerm2 for each teammate in its own terminal pane. Configure via `"teammateMode": "split"` in settings.json or `--teammate-mode split` flag
+- **In-process mode** (default): All teammates share one terminal. Shift+Down cycles between them
+- **Quality gates**: TeammateIdle and TaskCompleted hooks enforce completion receipts on dp-cto teams
+
+Split-pane mode is recommended for observability — you can watch each agent work in real-time instead of waiting for background completion.
+
 ## Installation
 
 ```bash
@@ -39,4 +50,4 @@ claude plugin install dp-cto@dotplugins
 
 After installing the plugin, run `bd setup claude --project` in your repo to install beads native hooks (SessionStart context injection + PreCompact state preservation). dp-cto relies on these for full functionality.
 
-For Agent Teams support (collaborative dispatch), set `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in your shell environment. Without this, `[collaborative]` tasks fall back to sequential subagent dispatch.
+For Agent Teams support, see the [Agent Teams](#agent-teams) section above.

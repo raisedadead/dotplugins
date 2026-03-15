@@ -230,12 +230,25 @@ describe("Skill frontmatter", () => {
 
 const AGENTS_ROOT = join(PLUGIN_ROOT, "agents");
 
-const EXPECTED_AGENTS = ["dp-cto-implementer", "dp-cto-validator"];
+const EXPECTED_AGENTS = [
+  "dp-cto-implementer",
+  "dp-cto-validator",
+  "dp-cto-reviewer",
+  "dp-cto-researcher",
+  "dp-cto-sweeper",
+  "dp-cto-debugger",
+  "dp-cto-tester",
+];
 
 describe("Agent frontmatter", () => {
   const AGENT_FIELDS: Record<string, Record<string, string>> = {
     "dp-cto-implementer": { model: "inherit", memory: "user" },
     "dp-cto-validator": { model: "haiku", memory: "user", permissionMode: "plan" },
+    "dp-cto-reviewer": { model: "sonnet", memory: "user" },
+    "dp-cto-researcher": { model: "sonnet", memory: "user" },
+    "dp-cto-sweeper": { model: "inherit", memory: "user" },
+    "dp-cto-debugger": { model: "inherit", memory: "user" },
+    "dp-cto-tester": { model: "inherit", memory: "user" },
   };
   let agentFiles: string[];
 
@@ -302,6 +315,101 @@ describe("Agent frontmatter", () => {
     expect(toolsLine).toBeDefined();
     expect(toolsLine).not.toMatch(/Edit/);
     expect(toolsLine).not.toMatch(/Write/);
+  });
+
+  test("dp-cto-reviewer has correct tool restrictions", async () => {
+    const content = await readFile(join(AGENTS_ROOT, "dp-cto-reviewer.md"), "utf-8");
+    const toolsLine = content.split("\n").find((l) => l.startsWith("tools:"));
+    const disallowedLine = content.split("\n").find((l) => l.startsWith("disallowedTools:"));
+    expect(toolsLine).toBeDefined();
+    expect(toolsLine).toMatch(/Read/);
+    expect(toolsLine).toMatch(/Grep/);
+    expect(toolsLine).toMatch(/Glob/);
+    expect(toolsLine).toMatch(/Bash/);
+    expect(toolsLine).not.toMatch(/Edit/);
+    expect(toolsLine).not.toMatch(/Write/);
+    expect(toolsLine).not.toMatch(/Agent/);
+    expect(disallowedLine).toBeDefined();
+    expect(disallowedLine).toMatch(/Edit/);
+    expect(disallowedLine).toMatch(/Write/);
+    expect(disallowedLine).toMatch(/Agent/);
+  });
+
+  test("dp-cto-implementer has correct tool restrictions", async () => {
+    const content = await readFile(join(AGENTS_ROOT, "dp-cto-implementer.md"), "utf-8");
+    const toolsLine = content.split("\n").find((l) => l.startsWith("tools:"));
+    const disallowedLine = content.split("\n").find((l) => l.startsWith("disallowedTools:"));
+    expect(toolsLine).toBeDefined();
+    expect(toolsLine).toMatch(/Read/);
+    expect(toolsLine).toMatch(/Edit/);
+    expect(toolsLine).toMatch(/Write/);
+    expect(toolsLine).toMatch(/Grep/);
+    expect(toolsLine).toMatch(/Glob/);
+    expect(toolsLine).toMatch(/Bash/);
+    expect(disallowedLine).toBeDefined();
+    expect(disallowedLine).toMatch(/Agent/);
+  });
+
+  test("dp-cto-researcher has correct tool restrictions", async () => {
+    const content = await readFile(join(AGENTS_ROOT, "dp-cto-researcher.md"), "utf-8");
+    const toolsLine = content.split("\n").find((l) => l.startsWith("tools:"));
+    const disallowedLine = content.split("\n").find((l) => l.startsWith("disallowedTools:"));
+    expect(toolsLine).toBeDefined();
+    expect(toolsLine).toMatch(/Read/);
+    expect(toolsLine).toMatch(/Grep/);
+    expect(toolsLine).toMatch(/Glob/);
+    expect(toolsLine).toMatch(/WebSearch/);
+    expect(toolsLine).toMatch(/WebFetch/);
+    expect(disallowedLine).toBeDefined();
+    expect(disallowedLine).toMatch(/Edit/);
+    expect(disallowedLine).toMatch(/Write/);
+    expect(disallowedLine).toMatch(/Bash/);
+    expect(disallowedLine).toMatch(/Agent/);
+  });
+
+  test("dp-cto-sweeper has correct tool restrictions", async () => {
+    const content = await readFile(join(AGENTS_ROOT, "dp-cto-sweeper.md"), "utf-8");
+    const toolsLine = content.split("\n").find((l) => l.startsWith("tools:"));
+    const disallowedLine = content.split("\n").find((l) => l.startsWith("disallowedTools:"));
+    expect(toolsLine).toBeDefined();
+    expect(toolsLine).toMatch(/Read/);
+    expect(toolsLine).toMatch(/Edit/);
+    expect(toolsLine).toMatch(/Write/);
+    expect(toolsLine).toMatch(/Grep/);
+    expect(toolsLine).toMatch(/Glob/);
+    expect(toolsLine).toMatch(/Bash/);
+    expect(disallowedLine).toBeDefined();
+    expect(disallowedLine).toMatch(/Agent/);
+  });
+
+  test("dp-cto-debugger has correct tool restrictions", async () => {
+    const content = await readFile(join(AGENTS_ROOT, "dp-cto-debugger.md"), "utf-8");
+    const toolsLine = content.split("\n").find((l) => l.startsWith("tools:"));
+    const disallowedLine = content.split("\n").find((l) => l.startsWith("disallowedTools:"));
+    expect(toolsLine).toBeDefined();
+    expect(toolsLine).toMatch(/Read/);
+    expect(toolsLine).toMatch(/Grep/);
+    expect(toolsLine).toMatch(/Glob/);
+    expect(toolsLine).toMatch(/Bash/);
+    expect(disallowedLine).toBeDefined();
+    expect(disallowedLine).toMatch(/Edit/);
+    expect(disallowedLine).toMatch(/Write/);
+    expect(disallowedLine).toMatch(/Agent/);
+  });
+
+  test("dp-cto-tester has correct tool restrictions", async () => {
+    const content = await readFile(join(AGENTS_ROOT, "dp-cto-tester.md"), "utf-8");
+    const toolsLine = content.split("\n").find((l) => l.startsWith("tools:"));
+    const disallowedLine = content.split("\n").find((l) => l.startsWith("disallowedTools:"));
+    expect(toolsLine).toBeDefined();
+    expect(toolsLine).toMatch(/Read/);
+    expect(toolsLine).toMatch(/Edit/);
+    expect(toolsLine).toMatch(/Write/);
+    expect(toolsLine).toMatch(/Grep/);
+    expect(toolsLine).toMatch(/Glob/);
+    expect(toolsLine).toMatch(/Bash/);
+    expect(disallowedLine).toBeDefined();
+    expect(disallowedLine).toMatch(/Agent/);
   });
 });
 

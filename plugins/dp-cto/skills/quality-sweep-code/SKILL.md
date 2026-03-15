@@ -87,7 +87,7 @@ Show the user the selected categories and detected quality-gate command, then pr
 
 ## Step 2: Spawn Parallel Drift-Detection Agents
 
-For each selected category, spawn a `general-purpose` agent via the Agent tool.
+For each selected category, spawn a `dp-cto-sweeper` agent via the Agent tool.
 
 All agents run **in parallel** (single message, multiple Agent tool calls).
 
@@ -119,7 +119,7 @@ You are a specialist drift detector focused EXCLUSIVELY on: {CATEGORY_NAME}
 - [SUGGESTION] — minor entropy worth cleaning up (single unused variable, one stale TODO, minor naming preference)
 
 ## Constraints
-- Review ONLY. Do NOT modify any files.
+- Detect and report drift findings. Apply fixes for CRITICAL and WARNING findings directly. Report SUGGESTION findings only.
 - Do NOT report issues outside your category focus.
 - If you find no issues, report: "No {CATEGORY_NAME} drift detected."
 - Be specific: include file paths, line numbers, and concrete fix suggestions.
@@ -162,7 +162,7 @@ You are a specialist drift detector focused EXCLUSIVELY on: {CATEGORY_NAME}
 
 ### 4b: Spawn Fix Agents
 
-For each finding (or group of findings in the same file), spawn a one-shot `general-purpose` agent:
+For each finding (or group of findings in the same file), spawn a one-shot `dp-cto-implementer` agent:
 
 - Provide the exact finding(s) with file path, line number, and suggested fix
 - Scope the agent to ONLY the affected file(s)
