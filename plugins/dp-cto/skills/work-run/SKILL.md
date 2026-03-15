@@ -32,20 +32,22 @@ If you catch yourself writing application code, STOP. You are delegating, not co
 
 The stage machine hook enforces that the planning stage has been completed before this skill runs. State is tracked on the beads epic (via `dp-cto=planned` label). If you see this skill, `/dp-cto:work-plan` has already run and the active epic is in the local cache.
 
+All bd commands use `-q` (quiet) to suppress human-readable output. Only JSON output and exit codes are needed.
+
 ## Step 1: Read Beads Molecule and Classify
 
 1. Query the executable frontier — tasks with no open blockers:
 
 ```bash
-bd ready --json
+bd ready -q --json
 ```
 
-State is tracked on the epic. If no active epic is found in the cache, check `bd query` for suspended or planned epics (e.g., `bd query "label=dp-cto:planned" --json`).
+State is tracked on the epic. If no active epic is found in the cache, check `bd query -q` for suspended or planned epics (e.g., `bd query -q "label=dp-cto:planned" --json`).
 
 2. For the full task list and dependency graph:
 
 ```bash
-bd list --parent {epic-id} --json
+bd list -q --parent {epic-id} --json
 ```
 
 3. Parse each task's dispatch tag from the title suffix: `[subagent]`, `[subagent:isolated]`, `[iterative]`, `[collaborative]`
@@ -53,13 +55,15 @@ bd list --parent {epic-id} --json
 5. Present a brief task summary table to the user showing task name, type, and dependencies
 6. Proceed directly. No isolation question. No "ready to provision" pause.
 
-Beads handles dependency resolution — `bd ready` only returns tasks whose blockers are all closed. No manual dependency tracking needed.
+Beads handles dependency resolution — `bd ready -q` only returns tasks whose blockers are all closed. No manual dependency tracking needed.
 
 ## Step 1.5: Mirror Tasks to Native Task List
 
+Native Tasks mirror beads task state for cross-session sync and Ctrl+T visibility. Tasks API is a sync mechanism — the structured text output (see Progress Output Format) is the primary progress indicator in the main chat. If TaskCreate fails (e.g., non-TTY), skip silently.
+
 Before dispatching, create native Tasks for Ctrl+T visibility:
 
-1. For each task returned by `bd ready --json`, create a native Task:
+1. For each task returned by `bd ready -q --json`, create a native Task:
 
    ```
    TaskCreate(subject: "{beads-task-title}", description: "Beads: {beads-task-id}. {first-line-of-description}", activeForm: "Implementing {short-task-name}")
@@ -81,25 +85,23 @@ Before dispatching, create native Tasks for Ctrl+T visibility:
 
 5. For subsequent rounds (after Step 2.5), create native Tasks for newly unblocked beads tasks.
 
-Native Tasks are a session-level progress mirror — beads remains the source of truth. If TaskCreate fails (e.g., non-TTY environment), skip mirroring silently and continue.
-
 ## Step 2: Subagent Dispatch (parallel)
 
-For each `[subagent]` task returned by `bd ready`:
+For each `[subagent]` task returned by `bd ready -q`:
 
 1. Mark the task in progress:
 
 ```bash
-bd update {task-id} --status in-progress
+bd update -q {task-id} --status in-progress
 ```
 
 2. Extract the agent prompt from the issue description:
 
 ```bash
-bd show {task-id} --json
+bd show -q {task-id} --json
 ```
 
-The agent prompt is the issue description from `bd show`. For subsequent rounds, also apply the file-change injection from Step 2.5 — if upstream tasks modified files in this task's scope, prepend the `## Upstream Changes` section.
+The agent prompt is the issue description from `bd show -q`. For subsequent rounds, also apply the file-change injection from Step 2.5 — if upstream tasks modified files in this task's scope, prepend the `## Upstream Changes` section.
 
 Each dispatched agent prompt MUST include explicit scope boundaries. The agent must know:
 
@@ -115,10 +117,10 @@ Dispatch via the `Agent` tool with `subagent_type: "dp-cto-implementer"` and `ru
 3. **Track the dispatch** — record when the agent is spawned and register the agent state:
 
 ```bash
-bd agent state {task-id} spawning
-bd slot set {task-id} hook {task-id}
-bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
-bd agent state {task-id} running
+bd agent state -q {task-id} spawning
+bd slot set -q {task-id} hook {task-id}
+bd audit record -q --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+bd agent state -q {task-id} running
 ```
 
 For `[subagent:isolated]` tasks, use `dispatch_type: "subagent:isolated"` and add `isolation: "worktree"` to the Agent call.
@@ -138,7 +140,7 @@ The agent prompt is pre-built in the beads issue description. Do NOT modify it e
 Before dispatching agents, validate that all task specs meet quality requirements:
 
 ```bash
-bd lint --parent {epic-id}
+bd lint -q --parent {epic-id}
 ```
 
 If any tasks are missing acceptance criteria, stop and report. Do not dispatch tasks with incomplete specs.
@@ -147,17 +149,38 @@ If any tasks are missing acceptance criteria, stop and report. Do not dispatch t
 
 The dp-cto-implementer agent has the Completion Receipt format, TDD discipline, scope enforcement, and escalation protocol baked into its system prompt. Do NOT append these to the dispatch prompt — the agent already has them.
 
-The task-specific content (files, acceptance criteria, architectural context) still comes from the beads issue description (`bd show {task-id} --json`).
+The task-specific content (files, acceptance criteria, architectural context) still comes from the beads issue description (`bd show -q {task-id} --json`).
+
+### Progress Output Format
+
+The CTO emits structured text blocks at two boundaries to keep the main chat a clean progress dashboard.
+
+**On dispatch** (after spawning each agent in a round):
+
+```
+── Round {N} ───────────────────────────
+[dispatched] {task-title} [{dispatch-type}]
+[dispatched] {task-title} [{dispatch-type}]
+```
+
+**On round completion** (at the start of Step 2.5, before the progress query):
+
+```
+── Round {N} Complete ──────────────────
+[done]  {task-title}  ✓
+[stuck] {task-title}  ✗
+Progress: {done}/{total} done, {running} running, {ready} ready
+```
 
 CTO is auto-notified when background agents complete. After each agent completes, **track the outcome**, **update the agent state**, and mark it done:
 
 On success:
 
 ```bash
-bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success","iterations":1}'
-bd agent state {task-id} done
-bd slot clear {task-id} hook
-bd close {task-id}
+bd audit record -q --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success","iterations":1}'
+bd agent state -q {task-id} done
+bd slot clear -q {task-id} hook
+bd close -q {task-id}
 ```
 
 **Collect modified files** — extract the "Files Modified" list from the agent's Completion Receipt. Store a map for this round: `{task-id} -> [file1, file2, ...]`. If the agent result does not include a clear file list, run `git diff --name-only $ROUND_BASELINE` scoped to the task's declared file scope to infer what changed. Accumulate across rounds (append, do not overwrite).
@@ -165,9 +188,9 @@ bd close {task-id}
 On failure:
 
 ```bash
-bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure","iterations":1}'
-bd agent state {task-id} stuck
-bd slot clear {task-id} hook
+bd audit record -q --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure","iterations":1}'
+bd agent state -q {task-id} stuck
+bd slot clear -q {task-id} hook
 ```
 
 After all agents in the current round complete, proceed to Step 2.5 (Round Checkpoint) before dispatching the next round.
@@ -183,7 +206,7 @@ After each dispatch round completes (all agents in the round have returned), emi
 Query the full task list to compute progress:
 
 ```bash
-bd list --parent {epic-id} --json
+bd list -q --parent {epic-id} --json
 ```
 
 Count tasks by status and agent state, then emit:
@@ -197,7 +220,7 @@ Where:
 - `{done}` = tasks in `done` agent state (or status `closed`)
 - `{total}` = all child tasks of the epic
 - `{running}` = tasks in `running` agent state
-- `{ready}` = tasks returned by `bd ready` (unblocked, not yet dispatched)
+- `{ready}` = tasks returned by `bd ready -q` (unblocked, not yet dispatched)
 - `{stuck}` = tasks in `stuck` agent state
 
 ### Circuit Breaker
@@ -210,21 +233,21 @@ AskUserQuestion: "50%+ of this round failed. Options: Continue to next round / R
 
 Act on the user's choice:
 
-- **Continue to next round**: Re-query `bd ready --json` and dispatch the next batch normally. Stuck tasks remain in `stuck` state.
-- **Re-dispatch failed tasks**: For each stuck task, run `bd agent state {task-id} spawning`, set them back to `in-progress`, re-extract their prompts, and re-dispatch as a fresh round. Follow the same dispatch protocol (agent state tracking, audit records).
+- **Continue to next round**: Re-query `bd ready -q --json` and dispatch the next batch normally. Stuck tasks remain in `stuck` state.
+- **Re-dispatch failed tasks**: For each stuck task, run `bd agent state -q {task-id} spawning`, set them back to `in-progress`, re-extract their prompts, and re-dispatch as a fresh round. Follow the same dispatch protocol (agent state tracking, audit records).
 - **Stop execution**: Halt work-run. The stage remains `executing` — the user can re-invoke `/dp-cto:work-run` to resume, or `/dp-cto:work-park` to suspend.
 
-If <=50% stuck, proceed to the next `bd ready` round automatically (no pause).
+If <=50% stuck, proceed to the next `bd ready -q` round automatically (no pause).
 
 ### File-Change Injection for Downstream Tasks
 
 Before dispatching the next round, check whether any just-completed tasks modified files that overlap with downstream tasks' declared scope. This prevents downstream agents from blindly overwriting upstream work.
 
-1. **Collect completed-task file maps** — use the modified-files map accumulated in Step 2 (and Steps 3-4 if applicable). Each entry is `{task-id} -> [file1, file2, ...]` along with the task title from `bd show {task-id} --json`.
+1. **Collect completed-task file maps** — use the modified-files map accumulated in Step 2 (and Steps 3-4 if applicable). Each entry is `{task-id} -> [file1, file2, ...]` along with the task title from `bd show -q {task-id} --json`.
 
-2. **Query next-round tasks** — run `bd ready --json` to get the tasks about to be dispatched.
+2. **Query next-round tasks** — run `bd ready -q --json` to get the tasks about to be dispatched.
 
-3. **Extract downstream file scope** — for each next-round task, extract its file scope from the `## Files` section of the issue description (`bd show {task-id} --json`, parse the `description` field for lines under `## Files`). Collect these as a set of file paths.
+3. **Extract downstream file scope** — for each next-round task, extract its file scope from the `## Files` section of the issue description (`bd show -q {task-id} --json`, parse the `description` field for lines under `## Files`). Collect these as a set of file paths.
 
 4. **Detect overlap** — for each next-round task, compare its file scope set against ALL completed-task file maps (across all prior rounds). If any file appears in both sets, that file has overlap.
 
@@ -245,7 +268,7 @@ Place this section at the very top of the prompt, before the original issue desc
 
 6. **No overlap = no injection** — if a downstream task has no file overlap with any completed task, pass the prompt verbatim (unchanged behavior).
 
-Then re-query `bd ready --json` to discover newly unblocked tasks and dispatch the next round.
+Then re-query `bd ready -q --json` to discover newly unblocked tasks and dispatch the next round.
 
 ## Step 3: Iterative Dispatch (only if plan has `[iterative]` tasks)
 
@@ -253,15 +276,15 @@ Skip this step if no `[iterative]` tasks exist. Most well-planned tasks should b
 
 For each `[iterative]` task:
 
-1. Mark in progress: `bd update {task-id} --status in-progress`
-2. Extract the agent prompt from `bd show {task-id} --json` (the `description` field). Apply file-change injection from Step 2.5 if upstream overlap exists.
+1. Mark in progress: `bd update -q {task-id} --status in-progress`
+2. Extract the agent prompt from `bd show -q {task-id} --json` (the `description` field). Apply file-change injection from Step 2.5 if upstream overlap exists.
 3. **Track the dispatch** — record when the agent is spawned and register agent state:
 
 ```bash
-bd agent state {task-id} spawning
-bd slot set {task-id} hook {task-id}
-bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"iterative","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","max_iterations":'${N}'}'
-bd agent state {task-id} running
+bd agent state -q {task-id} spawning
+bd slot set -q {task-id} hook {task-id}
+bd audit record -q --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"iterative","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'","max_iterations":'${N}'}'
+bd agent state -q {task-id} running
 ```
 
 4. Dispatch via the `Agent` tool with `subagent_type: "dp-cto-implementer"` and `run_in_background: true` (same as Step 2)
@@ -271,21 +294,21 @@ After completion, **track the outcome**, **collect modified files** (same as Ste
 On success:
 
 ```bash
-bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success","iterations":'${N}'}'
-bd agent state {task-id} done
-bd slot clear {task-id} hook
-bd close {task-id}
+bd audit record -q --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success","iterations":'${N}'}'
+bd agent state -q {task-id} done
+bd slot clear -q {task-id} hook
+bd close -q {task-id}
 ```
 
 On failure:
 
 ```bash
-bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure","iterations":'${N}'}'
-bd agent state {task-id} stuck
-bd slot clear {task-id} hook
+bd audit record -q --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure","iterations":'${N}'}'
+bd agent state -q {task-id} stuck
+bd slot clear -q {task-id} hook
 ```
 
-If it fails the quality gate after 2 fix rounds in Step 5, mark it done with `bd close {task-id}`, report the failure to the user, and suggest they invoke `/dp-cto:work-run-loop` manually.
+If it fails the quality gate after 2 fix rounds in Step 5, mark it done with `bd close -q {task-id}`, report the failure to the user, and suggest they invoke `/dp-cto:work-run-loop` manually.
 
 After all iterative tasks in the current round complete, proceed to Step 2.5 (Round Checkpoint) before continuing.
 
@@ -315,17 +338,17 @@ Agent Teams requires `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`. Before creating a
 Agent(name: "{task-id}-impl", team_name: "{feature}-collab", ...)
 ```
 
-5. Extract the agent prompt from `bd show {task-id} --json` (the `description` field) for each teammate. Apply file-change injection from Step 2.5 if upstream overlap exists.
+5. Extract the agent prompt from `bd show -q {task-id} --json` (the `description` field) for each teammate. Apply file-change injection from Step 2.5 if upstream overlap exists.
 
 > **Note**: TeammateIdle and TaskCompleted hooks automatically enforce completion receipt discipline on dp-cto teams (identified by the `-collab` suffix). Teammates will be reminded to include receipts before going idle.
 
 6. **Track the dispatch and agent state** — for each teammate dispatched:
 
 ```bash
-bd agent state {task-id} spawning
-bd slot set {task-id} hook {task-id}
-bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"collaborative","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
-bd agent state {task-id} running
+bd agent state -q {task-id} spawning
+bd slot set -q {task-id} hook {task-id}
+bd audit record -q --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"implementer","dispatch_type":"collaborative","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+bd agent state -q {task-id} running
 ```
 
 7. Monitor via `TaskList`, steer via `SendMessage`
@@ -341,18 +364,18 @@ SendMessage({ to: "{task-id-A}-impl", message: "Cross-review {task-id-B}-impl's 
 On success:
 
 ```bash
-bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success"}'
-bd agent state {task-id} done
-bd slot clear {task-id} hook
-bd close {task-id}
+bd audit record -q --type outcome --actor dp-cto --ref {task-id} --data '{"result":"success"}'
+bd agent state -q {task-id} done
+bd slot clear -q {task-id} hook
+bd close -q {task-id}
 ```
 
 On failure:
 
 ```bash
-bd audit record --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure"}'
-bd agent state {task-id} stuck
-bd slot clear {task-id} hook
+bd audit record -q --type outcome --actor dp-cto --ref {task-id} --data '{"result":"failure"}'
+bd agent state -q {task-id} stuck
+bd slot clear -q {task-id} hook
 ```
 
 After all collaborative tasks complete, proceed to Step 2.5 (Round Checkpoint) before continuing to Step 5.
@@ -368,7 +391,7 @@ Spawn the `dp-cto-validator` agent via Agent tool with `subagent_type: "dp-cto-v
 **Track the validation dispatch**:
 
 ```bash
-bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"validator","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+bd audit record -q --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"validator","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
 ```
 
 **Validator agent prompt** — pass exactly this structure:
@@ -384,7 +407,7 @@ Independently verify the builder's Completion Receipt for Task {task-id}: {task-
 
 ## Original Task Spec
 
-{paste the acceptance criteria from bd show {task-id} --json}
+{paste the acceptance criteria from bd show -q {task-id} --json}
 
 ## File Scope
 
@@ -407,7 +430,7 @@ You MUST output exactly one of:
 **Track the validation outcome**:
 
 ```bash
-bd audit record --type validation --actor dp-cto --ref {task-id} --data '{"result":"{confirmed|disputed}","role":"validator"}'
+bd audit record -q --type validation --actor dp-cto --ref {task-id} --data '{"result":"{confirmed|disputed}","role":"validator"}'
 ```
 
 ### Stage 2 — Code Quality Review (only if Stage 1 is CONFIRMED)
@@ -421,13 +444,13 @@ If the validator outputs **CONFIRMED**, proceed to code quality review via `dp-c
 **Track the review dispatch**:
 
 ```bash
-bd audit record --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"reviewer","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
+bd audit record -q --type dispatch --actor dp-cto --ref {task-id} --data '{"role":"reviewer","dispatch_type":"subagent","started":"'$(date -u +%Y-%m-%dT%H:%M:%SZ)'"}'
 ```
 
 Spawn a foreground review Agent with the builder's result + file diffs. After the review completes, **track the review outcome**:
 
 ```bash
-bd audit record --type review --actor dp-cto --ref {task-id} --data '{"result":"{pass|fail}","issues_found":{N},"role":"reviewer"}'
+bd audit record -q --type review --actor dp-cto --ref {task-id} --data '{"result":"{pass|fail}","issues_found":{N},"role":"reviewer"}'
 ```
 
 If issues found, spawn a fresh fix Agent via `subagent_type: "dp-cto-implementer"` (foreground) with the review feedback + original task spec + file scope. Re-validate (Stage 1) after fix. Max 2 fix rounds, then report the failure to the user and suggest they invoke `/dp-cto:work-run-loop` manually.

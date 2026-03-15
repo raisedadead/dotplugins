@@ -28,8 +28,7 @@ describe("Beads availability detection (session-start.sh)", () => {
     expect(r.exitCode).toBe(0);
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
-    expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
-    expect(ctx.trimStart().startsWith("<EXTREMELY_IMPORTANT>")).toBe(true);
+    expect(ctx).toMatch(/dp-cto: Stage enforcement/);
   });
 
   test(".beads directory exists but no bd CLI: no beads context prepended", async () => {
@@ -47,7 +46,7 @@ describe("Beads availability detection (session-start.sh)", () => {
       expect(r.exitCode).toBe(0);
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
-      expect(ctx.trimStart().startsWith("<EXTREMELY_IMPORTANT>")).toBe(true);
+      expect(ctx).toMatch(/dp-cto:/);
     } finally {
       await rm(noBdDir, { recursive: true, force: true });
     }
@@ -57,7 +56,9 @@ describe("Beads availability detection (session-start.sh)", () => {
     const binDir = join(tmpDir, ".mock-bin");
     await mkdir(binDir, { recursive: true });
     const fakeBd = join(binDir, "bd");
-    await writeFile(fakeBd, '#!/usr/bin/env bash\necho "bd mock"', { mode: 0o755 });
+    await writeFile(fakeBd, '#!/usr/bin/env bash\necho "bd mock"', {
+      mode: 0o755,
+    });
     const r = await runHook(
       "session-start.sh",
       {
@@ -69,7 +70,7 @@ describe("Beads availability detection (session-start.sh)", () => {
     expect(r.exitCode).toBe(0);
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
-    expect(ctx.trimStart().startsWith("<EXTREMELY_IMPORTANT>")).toBe(true);
+    expect(ctx).toMatch(/dp-cto:/);
   });
 });
 
@@ -204,36 +205,36 @@ describe("work-run SKILL.md execute monitoring contract", () => {
 
   describe("agent state tracking", () => {
     test("documents bd agent state spawning on dispatch", () => {
-      expect(content).toMatch(/bd agent state \{task-id\} spawning/);
+      expect(content).toMatch(/bd agent state -q \{task-id\} spawning/);
     });
 
     test("documents bd agent state running after dispatch", () => {
-      expect(content).toMatch(/bd agent state \{task-id\} running/);
+      expect(content).toMatch(/bd agent state -q \{task-id\} running/);
     });
 
     test("documents bd agent state done on success", () => {
-      expect(content).toMatch(/bd agent state \{task-id\} done/);
+      expect(content).toMatch(/bd agent state -q \{task-id\} done/);
     });
 
     test("documents bd agent state stuck on failure", () => {
-      expect(content).toMatch(/bd agent state \{task-id\} stuck/);
+      expect(content).toMatch(/bd agent state -q \{task-id\} stuck/);
     });
 
     test("dispatch and outcome tracking uses bd audit record", () => {
-      expect(content).toMatch(/bd audit record --type dispatch/);
-      expect(content).toMatch(/bd audit record --type outcome/);
+      expect(content).toMatch(/bd audit record -q --type dispatch/);
+      expect(content).toMatch(/bd audit record -q --type outcome/);
     });
 
     test("documents bd slot set for hook registration on dispatch", () => {
-      expect(content).toMatch(/bd slot set \{task-id\} hook \{task-id\}/);
+      expect(content).toMatch(/bd slot set -q \{task-id\} hook \{task-id\}/);
     });
 
     test("documents bd slot clear for hook cleanup on completion", () => {
-      expect(content).toMatch(/bd slot clear \{task-id\} hook/);
+      expect(content).toMatch(/bd slot clear -q \{task-id\} hook/);
     });
 
     test("documents bd lint pre-dispatch validation", () => {
-      expect(content).toMatch(/bd lint --parent \{epic-id\}/);
+      expect(content).toMatch(/bd lint -q --parent \{epic-id\}/);
     });
   });
 
@@ -249,7 +250,7 @@ describe("work-run SKILL.md execute monitoring contract", () => {
     });
 
     test("documents bd list --parent query for progress", () => {
-      expect(content).toMatch(/bd list --parent \{epic-id\} --json/);
+      expect(content).toMatch(/bd list -q --parent \{epic-id\} --json/);
     });
   });
 

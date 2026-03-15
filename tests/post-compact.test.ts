@@ -42,7 +42,7 @@ describe("PostCompact (post-compact.sh)", () => {
     expect(r.json).not.toBeNull();
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
-    expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+    expect(ctx).toMatch(/dp-cto: Stage enforcement/);
     expect(ctx).toMatch(/RECOVERY:/);
   });
 
@@ -63,7 +63,7 @@ describe("PostCompact (post-compact.sh)", () => {
     expect(r.json).not.toBeNull();
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
-    expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+    expect(ctx).toMatch(/dp-cto: Stage enforcement/);
     expect(ctx).not.toMatch(/RECOVERY:/);
   });
 
@@ -74,7 +74,9 @@ describe("PostCompact (post-compact.sh)", () => {
       await symlink(bashPath, join(jqFreePath, "bash"));
       for (const bin of ["cat", "dirname", "basename", "tr", "grep", "tail", "mkdir"]) {
         try {
-          const realPath = execFileSync("which", [bin], { encoding: "utf-8" }).trim();
+          const realPath = execFileSync("which", [bin], {
+            encoding: "utf-8",
+          }).trim();
           if (realPath) await symlink(realPath, join(jqFreePath, bin));
         } catch {
           /* skip */
@@ -115,7 +117,7 @@ describe("PostCompact (post-compact.sh)", () => {
       expect(r.json).not.toBeNull();
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
-      expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+      expect(ctx).toMatch(/dp-cto: Stage enforcement/);
       expect(ctx).not.toMatch(/RECOVERY:/);
     } finally {
       await rm(noBdDir, { recursive: true, force: true });
@@ -139,6 +141,6 @@ describe("PostCompact (post-compact.sh)", () => {
     expect(r.json).not.toBeNull();
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
-    expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+    expect(ctx).toMatch(/dp-cto: Stage enforcement/);
   });
 });

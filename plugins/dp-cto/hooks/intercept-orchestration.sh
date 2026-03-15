@@ -25,7 +25,7 @@ get_dp_cto_state() {
     return 0
   fi
   local result
-  result=$(bd query "label=dp-cto:planning OR label=dp-cto:planned OR label=dp-cto:executing OR label=dp-cto:polishing OR label=dp-cto:suspended" --json 2>/dev/null) || { echo "idle"; return 0; }
+  result=$(bd query -q "label=dp-cto:planning OR label=dp-cto:planned OR label=dp-cto:executing OR label=dp-cto:polishing OR label=dp-cto:suspended" --json 2>/dev/null) || { echo "idle"; return 0; }
   if [ -z "$result" ] || [ "$result" = "[]" ]; then
     echo "idle"
     return 0
@@ -119,17 +119,17 @@ case "$SKILL_NAME" in
       case "$SKILL" in
         work-plan)
           if [ -n "$ACTIVE_EPIC" ]; then
-            bd set-state "$ACTIVE_EPIC" "dp-cto=planning" 2>/dev/null || true
+            bd set-state -q "$ACTIVE_EPIC" "dp-cto=planning" 2>/dev/null || true
           fi
           ;;
         work-run)
           if [ -n "$ACTIVE_EPIC" ]; then
-            bd set-state "$ACTIVE_EPIC" "dp-cto=executing" 2>/dev/null || true
+            bd set-state -q "$ACTIVE_EPIC" "dp-cto=executing" 2>/dev/null || true
           fi
           ;;
         work-polish)
           if [ -n "$ACTIVE_EPIC" ]; then
-            bd set-state "$ACTIVE_EPIC" "dp-cto=polishing" 2>/dev/null || true
+            bd set-state -q "$ACTIVE_EPIC" "dp-cto=polishing" 2>/dev/null || true
           fi
           ;;
       esac

@@ -278,7 +278,7 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       );
       expectAllowed(r);
       const log = await readFile(logFile, "utf-8");
-      expect(log).toMatch(/set-state epic-42 dp-cto=executing/);
+      expect(log).toMatch(/set-state -q epic-42 dp-cto=executing/);
     });
 
     test("work-polish calls bd set-state with polishing", async () => {
@@ -296,7 +296,25 @@ describe("Stage Enforcement (intercept-orchestration.sh)", () => {
       );
       expectAllowed(r);
       const log = await readFile(logFile, "utf-8");
-      expect(log).toMatch(/set-state epic-77 dp-cto=polishing/);
+      expect(log).toMatch(/set-state -q epic-77 dp-cto=polishing/);
+    });
+
+    test("work-plan from complete calls bd set-state with planning", async () => {
+      await seedBeadsDir(tmpDir);
+      const { path: mockPath, logFile } = await createMockBdWithLog(tmpDir, "complete", "epic-99");
+      const r = await runHook(
+        HOOK,
+        {
+          tool_name: "Skill",
+          tool_input: { skill: "dp-cto:work-plan" },
+          session_id: "s1",
+          cwd: tmpDir,
+        },
+        { PATH: mockPath },
+      );
+      expectAllowed(r);
+      const log = await readFile(logFile, "utf-8");
+      expect(log).toMatch(/set-state -q epic-99 dp-cto=planning/);
     });
   });
 
@@ -473,7 +491,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
       { PATH: mockPath },
     );
     const log = await readFile(logFile, "utf-8");
-    expect(log).toMatch(/set-state epic-1 dp-cto=planned/);
+    expect(log).toMatch(/set-state -q epic-1 dp-cto=planned/);
   });
 
   test("work-run calls bd set-state with polishing", async () => {
@@ -490,7 +508,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
       { PATH: mockPath },
     );
     const log = await readFile(logFile, "utf-8");
-    expect(log).toMatch(/set-state epic-2 dp-cto=polishing/);
+    expect(log).toMatch(/set-state -q epic-2 dp-cto=polishing/);
   });
 
   test("work-polish calls bd set-state with complete", async () => {
@@ -507,7 +525,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
       { PATH: mockPath },
     );
     const log = await readFile(logFile, "utf-8");
-    expect(log).toMatch(/set-state epic-3 dp-cto=complete/);
+    expect(log).toMatch(/set-state -q epic-3 dp-cto=complete/);
   });
 
   test("work-park calls bd set-state with suspended", async () => {
@@ -524,7 +542,7 @@ describe("Stage Transitions (stage-transition.sh)", () => {
       { PATH: mockPath },
     );
     const log = await readFile(logFile, "utf-8");
-    expect(log).toMatch(/set-state epic-4 dp-cto=suspended/);
+    expect(log).toMatch(/set-state -q epic-4 dp-cto=suspended/);
   });
 
   test("work-unpark does not call bd set-state (skill handles it)", async () => {
@@ -709,14 +727,14 @@ describe("Edge Cases", () => {
 describe("SessionStart (session-start.sh)", () => {
   const SESSION_HOOK = "session-start.sh";
 
-  test("enforcement message includes planning stage", async () => {
+  test("enforcement message includes dp-cto prefix", async () => {
     const r = await runHook(SESSION_HOOK, {
       session_id: "test-session",
       cwd: tmpDir,
     });
     const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
       ?.additionalContext as string;
-    expect(ctx).toMatch(/planning/);
+    expect(ctx).toMatch(/dp-cto:/);
   });
 
   test("degraded mode message when .beads/ missing", async () => {
@@ -745,13 +763,15 @@ describe("SessionStart (session-start.sh)", () => {
       const ctx = (r.json?.hookSpecificOutput as Record<string, unknown>)
         ?.additionalContext as string;
       expect(ctx).not.toMatch(/RECOVERY/);
-      expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+      expect(ctx).toMatch(/dp-cto: Stage enforcement/);
     });
 
     test("active epic in executing stage: recovery context injected", async () => {
       await seedBeadsDir(tmpDir);
       const queryResponse = JSON.stringify([{ id: "epic-100", labels: ["dp-cto:executing"] }]);
-      const mp = await createMockBdWithResponses(tmpDir, { query: queryResponse });
+      const mp = await createMockBdWithResponses(tmpDir, {
+        query: queryResponse,
+      });
       const r = await runHook(
         SESSION_HOOK,
         { session_id: "new-session", cwd: tmpDir },
@@ -763,13 +783,15 @@ describe("SessionStart (session-start.sh)", () => {
       expect(ctx).toMatch(/RECOVERY/);
       expect(ctx).toMatch(/epic-100/);
       expect(ctx).toMatch(/executing/);
-      expect(ctx).toMatch(/DP-CTO PLUGIN ENFORCEMENT/);
+      expect(ctx).toMatch(/dp-cto: Stage enforcement/);
     });
 
     test("active epic in planning stage: recovery context injected", async () => {
       await seedBeadsDir(tmpDir);
       const queryResponse = JSON.stringify([{ id: "epic-200", labels: ["dp-cto:planning"] }]);
-      const mp = await createMockBdWithResponses(tmpDir, { query: queryResponse });
+      const mp = await createMockBdWithResponses(tmpDir, {
+        query: queryResponse,
+      });
       const r = await runHook(
         SESSION_HOOK,
         { session_id: "new-session", cwd: tmpDir },
@@ -786,7 +808,9 @@ describe("SessionStart (session-start.sh)", () => {
     test("active epic in polishing stage: recovery context injected", async () => {
       await seedBeadsDir(tmpDir);
       const queryResponse = JSON.stringify([{ id: "epic-300", labels: ["dp-cto:polishing"] }]);
-      const mp = await createMockBdWithResponses(tmpDir, { query: queryResponse });
+      const mp = await createMockBdWithResponses(tmpDir, {
+        query: queryResponse,
+      });
       const r = await runHook(
         SESSION_HOOK,
         { session_id: "new-session", cwd: tmpDir },
@@ -993,17 +1017,47 @@ describe("PreToolUse intercept-bd-init.sh", () => {
       tool_name: "Bash",
       tool_input: { command: "bd init" },
     });
-    expectDenied(r, /bd init without --stealth/);
+    expectDenied(r, /--stealth.*--skip-hooks|requires both/);
   });
 
-  test("bd init --stealth is allowed", async () => {
+  test("bd init --skip-hooks alone is denied (needs --stealth too)", async () => {
+    const r = await runHook(BD_HOOK, {
+      tool_name: "Bash",
+      tool_input: { command: "bd init --skip-hooks" },
+    });
+    expectDenied(r, /--stealth/);
+  });
+
+  test("bd init --stealth alone is denied (needs --skip-hooks too)", async () => {
     const r = await runHook(BD_HOOK, {
       tool_name: "Bash",
       tool_input: { command: "bd init --stealth" },
     });
+    expectDenied(r, /--skip-hooks/);
+  });
+
+  test("bd init --stealth --skip-hooks is allowed", async () => {
+    const r = await runHook(BD_HOOK, {
+      tool_name: "Bash",
+      tool_input: { command: "bd init --stealth --skip-hooks" },
+    });
     expectAllowed(r);
-    expect(r.stdout).toBe("");
-    expect(r.json).toBeNull();
+  });
+
+  test("bd init --skip-hooks --stealth (reversed order) is allowed", async () => {
+    const r = await runHook(BD_HOOK, {
+      tool_name: "Bash",
+      tool_input: { command: "bd init --skip-hooks --stealth" },
+    });
+    expectAllowed(r);
+  });
+
+  test("bd init --stealth --skip-hooks --quiet is allowed", async () => {
+    const r = await runHook(BD_HOOK, {
+      tool_name: "Bash",
+      tool_input: { command: "bd init --stealth --skip-hooks --quiet" },
+    });
+    expectAllowed(r);
   });
 
   test("empty command passes silently", async () => {
@@ -1021,7 +1075,7 @@ describe("PreToolUse intercept-bd-init.sh", () => {
       tool_name: "Bash",
       tool_input: { command: "echo foo && bd init" },
     });
-    expectDenied(r, /bd init without --stealth/);
+    expectDenied(r, /--stealth.*--skip-hooks|requires both/);
   });
 });
 

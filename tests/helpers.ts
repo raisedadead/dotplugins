@@ -199,7 +199,7 @@ export async function createMockBdWithResponses(
     "#!/bin/bash",
     'case "$1" in',
     "  query)",
-    '    if echo "$2" | grep -q "executing"; then',
+    '    if echo "$*" | grep -q "executing"; then',
     `      cat <<'EXECQUERYEOF'`,
     queryExecPolishResp,
     "EXECQUERYEOF",

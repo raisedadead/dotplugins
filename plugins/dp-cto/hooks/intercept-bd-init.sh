@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# PreToolUse hook: intercepts `bd init` without `--stealth` flag.
-# Denies bare `bd init` to prevent project .gitignore pollution.
+# PreToolUse hook: intercepts `bd init` without both `--stealth` and `--skip-hooks` flags.
+# Denies bare `bd init` to prevent project .gitignore pollution and hook interference.
 # Global gitignore handles .beads/ and .dolt/ exclusions.
 
 if ! command -v jq &>/dev/null; then
@@ -23,12 +23,12 @@ if [ -z "$COMMAND" ]; then
   exit 0
 fi
 
-# Check if command contains `bd init` without `--stealth`
+# Check if command contains `bd init` without both `--stealth` and `--skip-hooks`
 if echo "$COMMAND" | grep -qE '\bbd\s+init\b'; then
-  if echo "$COMMAND" | grep -qE '\-\-stealth'; then
+  if echo "$COMMAND" | grep -qE '\-\-stealth' && echo "$COMMAND" | grep -qE '\-\-skip-hooks'; then
     exit 0
   fi
-  jq -n '{hookSpecificOutput: {permissionDecision: "deny", permissionDecisionReason: "bd init without --stealth modifies project .gitignore. Use `bd init --stealth` instead — global gitignore already handles .beads/ and .dolt/ exclusions."}}'
+  jq -n '{hookSpecificOutput: {permissionDecision: "deny", permissionDecisionReason: "bd init requires both --stealth and --skip-hooks. Use: bd init --stealth --skip-hooks"}}'
   exit 0
 fi
 
